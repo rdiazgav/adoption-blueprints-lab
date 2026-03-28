@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: payments
+  namespace: retailflow
+  labels:
+    app.kubernetes.io/name: payments
+    app.kubernetes.io/part-of: retailflow
+spec:
+  type: ClusterIP
+  # Selects both v1 and v2 pods — OSSM VirtualService controls the traffic split
+  selector:
+    app.kubernetes.io/name: payments
+    app.kubernetes.io/part-of: retailflow
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP

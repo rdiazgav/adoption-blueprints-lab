@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: recommendations
+  namespace: retailflow
+  labels:
+    app.kubernetes.io/name: recommendations
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/part-of: retailflow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: recommendations
+      app.kubernetes.io/part-of: retailflow
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: recommendations
+        app.kubernetes.io/version: "1.0.0"
+        app.kubernetes.io/part-of: retailflow
+    spec:
+      containers:
+        - name: recommendations
+          image: quay.io/rdiazgav/retailflow-recommendations:1.0.0
+          ports:
+            - containerPort: 8000
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            failureThreshold: 3

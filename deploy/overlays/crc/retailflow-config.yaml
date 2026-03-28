@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: retailflow-config
+  namespace: retailflow
+  labels:
+    app.kubernetes.io/part-of: retailflow
+data:
+  ENVIRONMENT: crc
+  LOG_LEVEL: INFO

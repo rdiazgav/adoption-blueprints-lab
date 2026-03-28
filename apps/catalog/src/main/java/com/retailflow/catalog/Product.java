@@ -27,10 +27,10 @@ public class Product extends PanacheEntity {
     @Column(nullable = false)
     public Boolean active = true;
 
-    @Column(nullable = false, updatable = false)
+    @Column(name = "createdat", nullable = false, updatable = false)
     public LocalDateTime createdAt;
 
-    @Column(nullable = false)
+    @Column(name = "updatedat", nullable = false)
     public LocalDateTime updatedAt;
 
     @PrePersist

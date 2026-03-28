@@ -1,0 +1,40 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: retailflow
+
+resources:
+  - ../../base
+  - frontend-route.yaml
+  - retailflow-config.yaml
+
+patches:
+  # Quarkus services: cpu 100m/500m, memory 256Mi/512Mi
+  - path: patches/quarkus-resources.yaml
+    target:
+      kind: Deployment
+      name: "(api-gateway|orders|catalog|payments-v1|payments-v2)"
+
+  # recommendations: cpu 50m/200m, memory 128Mi/256Mi
+  - path: patches/recommendations-resources.yaml
+    target:
+      kind: Deployment
+      name: recommendations
+
+  # frontend: cpu 50m/200m, memory 128Mi/256Mi
+  - path: patches/frontend-resources.yaml
+    target:
+      kind: Deployment
+      name: frontend
+
+  # PostgreSQL: cpu 100m/300m, memory 256Mi/512Mi
+  - path: patches/postgresql-resources.yaml
+    target:
+      kind: Deployment
+      name: "(postgresql-orders|postgresql-catalog|postgresql-payments)"
+
+  # Redis: cpu 50m/100m, memory 64Mi/128Mi
+  - path: patches/redis-resources.yaml
+    target:
+      kind: Deployment
+      name: redis

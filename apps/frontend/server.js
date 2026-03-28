@@ -10,12 +10,14 @@ const API_GATEWAY_URL = process.env.API_GATEWAY_URL || 'http://api-gateway:8080'
 // Static assets
 app.use(express.static('public'));
 
-// Proxy all /api/* traffic to the api-gateway
+// Proxy all /api/* traffic to the api-gateway.
+// Mounted at root (not '/api') so Express does not strip the /api prefix
+// before forwarding — the gateway expects the full /api/... path.
 app.use(
-  '/api',
   createProxyMiddleware({
     target: API_GATEWAY_URL,
     changeOrigin: true,
+    pathFilter: '/api',
     on: {
       error: (err, req, res) => {
         console.error('[proxy error]', err.message);
