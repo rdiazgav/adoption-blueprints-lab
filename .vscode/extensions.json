@@ -1,0 +1,11 @@
+{
+  "recommendations": [
+    "redhat.java",
+    "redhat.vscode-quarkus",
+    "redhat.vscode-yaml",
+    "redhat.vscode-openshift-connector",
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "ms-azuretools.vscode-docker"
+  ]
+}
