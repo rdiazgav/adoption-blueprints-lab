@@ -48,41 +48,21 @@
 </footer>
 
 <script>
-  // ── Category → emoji mapping ─────────────────────────────────────────────
-  const CATEGORY_EMOJI = {
-    beach:       '🏖️',
-    mountain:    '🏔️',
-    city:        '🏙️',
-    adventure:   '🧗',
-    cultural:    '🏛️',
-    island:      '🌴',
-    safari:      '🦁',
-    ski:         '⛷️',
-    cruise:      '🚢',
-    peripherals: '🌍',
-    displays:    '🌅',
-    audio:       '🎶',
-    storage:     '🗺️',
-    accessories: '✈️',
-    office:      '🏢',
+  // ── Category → theme (emoji + gradient) ─────────────────────────────────
+  const CATEGORY_THEME = {
+    adventure:    { emoji: '🗺️',  gradient: 'linear-gradient(135deg,#e8734a,#c45a2a)' },
+    fantasy:      { emoji: '🏰',  gradient: 'linear-gradient(135deg,#7c4dff,#4a148c)' },
+    space:        { emoji: '🚀',  gradient: 'linear-gradient(135deg,#0d1b2a,#1b4f72)' },
+    'time travel':{ emoji: '⏰',  gradient: 'linear-gradient(135deg,#2c3e50,#4a235a)' },
+    mystery:      { emoji: '🔱',  gradient: 'linear-gradient(135deg,#1a3a5c,#0d2137)' },
+    beach:        { emoji: '🏖️', gradient: 'linear-gradient(135deg,#00b4d8,#0077b6)' },
+    europe:       { emoji: '🏛️', gradient: 'linear-gradient(135deg,#2d6a4f,#1b4332)' },
+    asia:         { emoji: '⛩️', gradient: 'linear-gradient(135deg,#d62828,#9d0208)' },
   };
+  const DEFAULT_THEME = { emoji: '✈️', gradient: 'linear-gradient(135deg,#1a3a5c,#2d6a9f)' };
 
-  // Card gradient palette — cycles by index
-  const GRADIENTS = [
-    'linear-gradient(135deg,#1a3a5c,#2d6a9f)',
-    'linear-gradient(135deg,#e8734a,#c45c38)',
-    'linear-gradient(135deg,#2d6a9f,#4a9fd4)',
-    'linear-gradient(135deg,#1a3a5c,#e8734a)',
-    'linear-gradient(135deg,#4a9fd4,#1a3a5c)',
-    'linear-gradient(135deg,#c45c38,#2d6a9f)',
-  ];
-
-  function emoji(category) {
-    return CATEGORY_EMOJI[category?.toLowerCase()] || '✈️';
-  }
-
-  function gradient(i) {
-    return GRADIENTS[i % GRADIENTS.length];
+  function categoryTheme(category) {
+    return CATEGORY_THEME[(category || '').toLowerCase()] || DEFAULT_THEME;
   }
 
   function fmt(price) {
@@ -141,12 +121,11 @@
         return;
       }
 
-      grid.innerHTML = active.map((p, i) => `
+      grid.innerHTML = active.map((p) => {
+        const theme = categoryTheme(p.category);
+        return `
         <div class="dest-card" onclick='bookNow(${JSON.stringify(p)})'>
-          <div class="dest-image" style="background:${gradient(i)}">
-            <span class="dest-emoji">${emoji(p.category)}</span>
-            <span class="dest-label">${(p.category || 'destination').toUpperCase()}</span>
-          </div>
+          <div style="height:200px;background:${theme.gradient};display:flex;align-items:center;justify-content:center;font-size:64px;">${theme.emoji}</div>
           <div class="dest-body">
             <div class="dest-name">${escHtml(p.name)}</div>
             <div class="dest-category">${escHtml(p.category || '')}</div>
@@ -162,7 +141,8 @@
             </div>
           </div>
         </div>
-      `).join('');
+        `;
+      }).join('');
 
     } catch (err) {
       badge.textContent = 'unavailable';
