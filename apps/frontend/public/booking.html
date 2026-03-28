@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CloudHop Travel — Book Your Trip</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <a href="/" class="logo">
+      <span class="logo-icon">✈️</span>
+      <span class="logo-text">Cloud<span>Hop</span> Travel</span>
+    </a>
+    <nav>
+      <a href="/">Destinations</a>
+      <a href="/booking.html">My Booking</a>
+    </nav>
+  </div>
+</header>
+
+<main style="padding-top:2rem">
+
+  <!-- Confirmation screen (hidden until booking succeeds) -->
+  <div id="confirmation">
+    <div class="card" style="max-width:520px;margin:0 auto">
+      <div class="confirm-icon">🎉</div>
+      <div class="confirm-title">You're all set!</div>
+      <div class="confirm-sub">Your booking is confirmed. Check your email for details.</div>
+      <div id="confirm-details" style="text-align:left;margin-bottom:1.5rem;font-size:.9rem;color:var(--text-muted)"></div>
+      <a href="/" class="btn btn-secondary btn-lg" style="width:100%;justify-content:center">
+        Browse more destinations
+      </a>
+    </div>
+  </div>
+
+  <!-- Booking form -->
+  <div id="booking-form-section">
+
+    <div style="margin-bottom:1.5rem">
+      <a href="/" class="btn btn-outline" style="font-size:.85rem">← Back to destinations</a>
+    </div>
+
+    <div class="booking-layout">
+
+      <!-- LEFT: form -->
+      <div>
+        <div class="card" style="margin-bottom:1.5rem">
+          <h2>Traveller Details</h2>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="first-name">First name</label>
+              <input id="first-name" type="text" placeholder="Jane" required>
+            </div>
+            <div class="form-group">
+              <label for="last-name">Last name</label>
+              <input id="last-name" type="text" placeholder="Smith" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="email">Email address</label>
+            <input id="email" type="email" placeholder="jane@example.com" required>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="travellers">Travellers</label>
+              <select id="travellers">
+                <option value="1">1 person</option>
+                <option value="2" selected>2 people</option>
+                <option value="3">3 people</option>
+                <option value="4">4 people</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="departure">Departure month</label>
+              <select id="departure">
+                <option>June 2025</option>
+                <option>July 2025</option>
+                <option>August 2025</option>
+                <option>September 2025</option>
+                <option>October 2025</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Payment Details</h2>
+          <div class="payment-card-mock">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <span>VISA</span>
+              <span style="font-size:1.4rem">💳</span>
+            </div>
+            <div class="card-number-mock">•••• •••• •••• 4242</div>
+            <div style="display:flex;justify-content:space-between">
+              <span>Jane Smith</span>
+              <span>12/26</span>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="card-number">Card number</label>
+            <input id="card-number" type="text" placeholder="1234 5678 9012 3456" maxlength="19">
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="card-expiry">Expiry</label>
+              <input id="card-expiry" type="text" placeholder="MM/YY" maxlength="5">
+            </div>
+            <div class="form-group">
+              <label for="card-cvc">CVC</label>
+              <input id="card-cvc" type="text" placeholder="•••" maxlength="3">
+            </div>
+          </div>
+
+          <div id="error-msg"></div>
+
+          <button id="confirm-btn" class="btn btn-primary btn-lg" style="width:100%;margin-top:1rem;justify-content:center"
+                  onclick="submitBooking()">
+            Confirm booking
+          </button>
+
+          <p style="text-align:center;font-size:.78rem;color:var(--text-muted);margin-top:.75rem">
+            🔒 Payments processed securely via stripe-mock
+          </p>
+        </div>
+      </div>
+
+      <!-- RIGHT: summary -->
+      <div>
+        <div class="card">
+          <h2>Trip Summary</h2>
+
+          <div id="dest-summary-image" class="booking-dest-image">✈️</div>
+          <div id="dest-summary-name" class="booking-dest-name">—</div>
+          <div id="dest-summary-meta" class="booking-dest-meta"></div>
+
+          <div class="price-row">
+            <span id="summary-label">Price per person</span>
+            <span id="summary-unit-price">—</span>
+          </div>
+          <div class="price-row">
+            <span>Travellers</span>
+            <span id="summary-travellers">2</span>
+          </div>
+          <div class="price-row">
+            <span>Taxes &amp; fees</span>
+            <span id="summary-taxes">—</span>
+          </div>
+          <div class="price-row total">
+            <span>Total</span>
+            <span id="summary-total">—</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div><!-- /booking-form-section -->
+
+</main>
+
+<footer>
+  <p><strong>CloudHop Travel</strong> &nbsp;·&nbsp; RetailFlow demo application &nbsp;·&nbsp; Red Hat OpenShift workshop</p>
+</footer>
+
+<script>
+  // ── Category → emoji ─────────────────────────────────────────────────────
+  const CATEGORY_EMOJI = {
+    beach:'🏖️', mountain:'🏔️', city:'🏙️', adventure:'🧗', cultural:'🏛️',
+    island:'🌴', safari:'🦁', ski:'⛷️', cruise:'🚢',
+    peripherals:'🌍', displays:'🌅', audio:'🎶', storage:'🗺️',
+    accessories:'✈️', office:'🏢',
+  };
+  const GRADIENTS = [
+    'linear-gradient(135deg,#1a3a5c,#2d6a9f)',
+    'linear-gradient(135deg,#e8734a,#c45c38)',
+    'linear-gradient(135deg,#2d6a9f,#4a9fd4)',
+    'linear-gradient(135deg,#1a3a5c,#e8734a)',
+    'linear-gradient(135deg,#4a9fd4,#1a3a5c)',
+    'linear-gradient(135deg,#c45c38,#2d6a9f)',
+  ];
+
+  function fmt(n) {
+    return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(n);
+  }
+
+  function escHtml(s) {
+    return String(s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ── Load destination from localStorage ──────────────────────────────────
+  let dest = null;
+
+  try {
+    dest = JSON.parse(localStorage.getItem('cloudhop_dest'));
+  } catch { /* ignore */ }
+
+  if (!dest) {
+    // Nothing was selected — redirect to catalog
+    window.location.href = '/';
+  }
+
+  function renderSummary() {
+    const catKey = (dest.category || '').toLowerCase();
+    const gradIdx = Math.abs(dest.id || 0) % GRADIENTS.length;
+    const em = CATEGORY_EMOJI[catKey] || '✈️';
+
+    const imgEl = document.getElementById('dest-summary-image');
+    imgEl.style.background = GRADIENTS[gradIdx];
+    imgEl.textContent = em;
+
+    document.getElementById('dest-summary-name').textContent = dest.name;
+    document.getElementById('dest-summary-meta').textContent =
+      `${(dest.category || '').replace(/\b\w/g, c => c.toUpperCase())} · ${dest.stock ?? '—'} seats left`;
+
+    updatePrices();
+  }
+
+  function updatePrices() {
+    if (!dest) return;
+    const qty = parseInt(document.getElementById('travellers').value, 10);
+    const unitPrice = parseFloat(dest.price) || 0;
+    const taxes = +(unitPrice * qty * 0.1).toFixed(2);
+    const total = unitPrice * qty + taxes;
+
+    document.getElementById('summary-unit-price').textContent = fmt(unitPrice);
+    document.getElementById('summary-travellers').textContent = qty;
+    document.getElementById('summary-taxes').textContent = fmt(taxes);
+    document.getElementById('summary-total').textContent = fmt(total);
+  }
+
+  document.getElementById('travellers').addEventListener('change', updatePrices);
+
+  renderSummary();
+
+  // ── Submit booking ────────────────────────────────────────────────────────
+  async function submitBooking() {
+    const btn = document.getElementById('confirm-btn');
+    const errEl = document.getElementById('error-msg');
+    errEl.style.display = 'none';
+
+    const firstName = document.getElementById('first-name').value.trim();
+    const lastName  = document.getElementById('last-name').value.trim();
+    const email     = document.getElementById('email').value.trim();
+    const qty       = parseInt(document.getElementById('travellers').value, 10);
+
+    if (!firstName || !lastName || !email) {
+      showError('Please fill in all traveller details.');
+      return;
+    }
+
+    const customerId = email.toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const unitPrice  = parseFloat(dest.price) || 0;
+    const taxes      = +(unitPrice * qty * 0.1).toFixed(2);
+    const total      = +(unitPrice * qty + taxes).toFixed(2);
+
+    btn.disabled = true;
+    btn.textContent = 'Processing…';
+
+    try {
+      // Step 1 — create order
+      const orderRes = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerId,
+          items: [{
+            productId:   String(dest.id),
+            productName: dest.name,
+            quantity:    qty,
+            unitPrice:   unitPrice,
+          }],
+        }),
+      });
+
+      if (!orderRes.ok) {
+        const err = await orderRes.json().catch(() => ({}));
+        throw new Error(err.error || `Order failed (${orderRes.status})`);
+      }
+
+      const order = await orderRes.json();
+
+      // Step 2 — process payment
+      const payRes = await fetch('/api/payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId:    String(order.id),
+          customerId,
+          amount:     total,
+        }),
+      });
+
+      if (!payRes.ok) {
+        const err = await payRes.json().catch(() => ({}));
+        throw new Error(err.error || `Payment failed (${payRes.status})`);
+      }
+
+      const payment = await payRes.json();
+
+      if (payment.status === 'DECLINED') {
+        throw new Error('Payment was declined. Please try a different card.');
+      }
+
+      // Show confirmation
+      showConfirmation(order, payment, firstName, dest.name, total);
+
+    } catch (err) {
+      showError(err.message);
+      btn.disabled = false;
+      btn.textContent = 'Confirm booking';
+    }
+  }
+
+  function showConfirmation(order, payment, name, destName, total) {
+    document.getElementById('booking-form-section').style.display = 'none';
+    const conf = document.getElementById('confirmation');
+    conf.style.display = 'block';
+    document.getElementById('confirm-details').innerHTML = `
+      <p><strong>Booking reference:</strong> #${order.id}</p>
+      <p><strong>Payment ID:</strong> #${payment.id} — ${payment.status}</p>
+      <p><strong>Destination:</strong> ${escHtml(destName)}</p>
+      <p><strong>Total charged:</strong> ${fmt(total)}</p>
+      <p><strong>Traveller:</strong> ${escHtml(name)}</p>
+    `;
+    localStorage.removeItem('cloudhop_dest');
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('error-msg');
+    el.textContent = '⚠️ ' + msg;
+    el.style.display = 'block';
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+</script>
+</body>
+</html>

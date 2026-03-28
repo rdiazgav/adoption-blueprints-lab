@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CloudHop Travel — Explore the World</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<div id="status-banner" role="alert"></div>
+
+<header>
+  <div class="header-inner">
+    <a href="/" class="logo">
+      <span class="logo-icon">✈️</span>
+      <span class="logo-text">Cloud<span>Hop</span> Travel</span>
+    </a>
+    <nav>
+      <a href="/">Destinations</a>
+      <a href="/booking.html">My Booking</a>
+      <a href="/api/health">API Status</a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero">
+  <h1>Discover Your Next<br><span>Adventure</span></h1>
+  <p>Hand-picked destinations, seamless booking, memories that last a lifetime.</p>
+</section>
+
+<main>
+  <div class="section-header">
+    <h2>Featured Destinations</h2>
+    <span class="badge" id="dest-count">Loading…</span>
+  </div>
+
+  <div id="destinations-grid">
+    <div class="state-card">
+      <div class="spinner"></div>
+      <p>Loading destinations…</p>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <p><strong>CloudHop Travel</strong> &nbsp;·&nbsp; RetailFlow demo application &nbsp;·&nbsp; Red Hat OpenShift workshop</p>
+</footer>
+
+<script>
+  // ── Category → emoji mapping ─────────────────────────────────────────────
+  const CATEGORY_EMOJI = {
+    beach:       '🏖️',
+    mountain:    '🏔️',
+    city:        '🏙️',
+    adventure:   '🧗',
+    cultural:    '🏛️',
+    island:      '🌴',
+    safari:      '🦁',
+    ski:         '⛷️',
+    cruise:      '🚢',
+    peripherals: '🌍',
+    displays:    '🌅',
+    audio:       '🎶',
+    storage:     '🗺️',
+    accessories: '✈️',
+    office:      '🏢',
+  };
+
+  // Card gradient palette — cycles by index
+  const GRADIENTS = [
+    'linear-gradient(135deg,#1a3a5c,#2d6a9f)',
+    'linear-gradient(135deg,#e8734a,#c45c38)',
+    'linear-gradient(135deg,#2d6a9f,#4a9fd4)',
+    'linear-gradient(135deg,#1a3a5c,#e8734a)',
+    'linear-gradient(135deg,#4a9fd4,#1a3a5c)',
+    'linear-gradient(135deg,#c45c38,#2d6a9f)',
+  ];
+
+  function emoji(category) {
+    return CATEGORY_EMOJI[category?.toLowerCase()] || '✈️';
+  }
+
+  function gradient(i) {
+    return GRADIENTS[i % GRADIENTS.length];
+  }
+
+  function fmt(price) {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(price);
+  }
+
+  function bookNow(dest) {
+    localStorage.setItem('cloudhop_dest', JSON.stringify(dest));
+    window.location.href = '/booking.html';
+  }
+
+  // ── System status banner ─────────────────────────────────────────────────
+  async function loadStatus() {
+    const banner = document.getElementById('status-banner');
+    try {
+      const res = await fetch('/api/health');
+      const data = await res.json();
+      const allUp = data.status === 'UP';
+      const services = data.services || {};
+      const downList = Object.entries(services)
+        .filter(([, v]) => v !== 'UP')
+        .map(([k]) => k);
+
+      if (allUp) {
+        banner.className = 'up';
+        banner.textContent = '✅  All systems operational';
+      } else if (downList.length) {
+        banner.className = 'partial';
+        banner.textContent = `⚠️  Degraded: ${downList.join(', ')} unreachable`;
+      } else {
+        banner.className = 'down';
+        banner.textContent = '🔴  Services unavailable — some features may not work';
+      }
+    } catch {
+      banner.className = 'partial';
+      banner.textContent = '⚠️  Could not reach API gateway';
+    }
+    banner.style.display = 'block';
+  }
+
+  // ── Destination grid ─────────────────────────────────────────────────────
+  async function loadDestinations() {
+    const grid = document.getElementById('destinations-grid');
+    const badge = document.getElementById('dest-count');
+
+    try {
+      const res = await fetch('/api/products');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const products = await res.json();
+
+      const active = products.filter(p => p.active !== false);
+      badge.textContent = `${active.length} destinations`;
+
+      if (active.length === 0) {
+        grid.innerHTML = '<div class="state-card"><p>No destinations available right now.</p></div>';
+        return;
+      }
+
+      grid.innerHTML = active.map((p, i) => `
+        <div class="dest-card" onclick='bookNow(${JSON.stringify(p)})'>
+          <div class="dest-image" style="background:${gradient(i)}">
+            <span class="dest-emoji">${emoji(p.category)}</span>
+            <span class="dest-label">${(p.category || 'destination').toUpperCase()}</span>
+          </div>
+          <div class="dest-body">
+            <div class="dest-name">${escHtml(p.name)}</div>
+            <div class="dest-category">${escHtml(p.category || '')}</div>
+            ${p.description ? `<p style="font-size:.85rem;color:var(--text-muted);margin-bottom:.75rem">${escHtml(p.description)}</p>` : ''}
+            <div class="dest-footer">
+              <div class="dest-price">
+                ${fmt(p.price)}
+                <small>per person</small>
+              </div>
+              <button class="btn btn-primary" onclick="event.stopPropagation();bookNow(${JSON.stringify(p).replace(/"/g, '&quot;')})">
+                Book now →
+              </button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+
+    } catch (err) {
+      badge.textContent = 'unavailable';
+      grid.innerHTML = `
+        <div class="state-card">
+          <p style="color:#842029">⚠️ Could not load destinations. Is the catalog service running?<br>
+          <small>${escHtml(err.message)}</small></p>
+        </div>`;
+    }
+  }
+
+  function escHtml(s) {
+    return String(s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
+  // ── Init ─────────────────────────────────────────────────────────────────
+  loadStatus();
+  loadDestinations();
+</script>
+</body>
+</html>
