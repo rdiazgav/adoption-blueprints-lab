@@ -1,0 +1,18 @@
+# IDE
+.vscode/settings.json
+.idea/
+
+# Build artifacts
+**/target/
+**/__pycache__/
+**/*.pyc
+**/node_modules/
+**/dist/
+
+# Secrets — nunca en el repo
+**/*.env
+**/secrets.yaml
+**/secret.yaml
+
+# OS
+.DS_Store
