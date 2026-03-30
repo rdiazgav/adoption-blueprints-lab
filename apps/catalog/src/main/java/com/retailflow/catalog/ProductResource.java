@@ -14,17 +14,35 @@ import java.util.List;
 @ApplicationScoped
 public class ProductResource {
 
+    private static volatile boolean chaosEnabled = false;
+
     @GET
-    public List<Product> list(@QueryParam("category") String category) {
-        if (category != null && !category.isBlank()) {
-            return Product.findActiveByCategory(category);
-        }
-        return Product.findActive();
+    @Path("/chaos/enable")
+    public Response chaosEnable() {
+        chaosEnabled = true;
+        return Response.ok("{\"chaos\":\"enabled\"}").build();
+    }
+
+    @GET
+    @Path("/chaos/disable")
+    public Response chaosDisable() {
+        chaosEnabled = false;
+        return Response.ok("{\"chaos\":\"disabled\"}").build();
+    }
+
+    @GET
+    public Response list(@QueryParam("category") String category) {
+        if (chaosEnabled) return Response.status(503).entity("{\"error\":\"Service unavailable\"}").build();
+        List<Product> products = (category != null && !category.isBlank())
+                ? Product.findActiveByCategory(category)
+                : Product.findActive();
+        return Response.ok(products).build();
     }
 
     @GET
     @Path("/{id}")
     public Response get(@PathParam("id") Long id) {
+        if (chaosEnabled) return Response.status(503).entity("{\"error\":\"Service unavailable\"}").build();
         Product product = Product.findById(id);
         if (product == null || !product.active) {
             return Response.status(Response.Status.NOT_FOUND).build();

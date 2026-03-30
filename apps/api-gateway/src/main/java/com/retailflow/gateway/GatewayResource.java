@@ -36,6 +36,18 @@ public class GatewayResource {
         return forward(() -> catalogClient.getProduct(id));
     }
 
+    @GET
+    @Path("/products/chaos/enable")
+    public Response catalogChaosEnable() {
+        return forward(() -> catalogClient.chaosEnable());
+    }
+
+    @GET
+    @Path("/products/chaos/disable")
+    public Response catalogChaosDisable() {
+        return forward(() -> catalogClient.chaosDisable());
+    }
+
     // ------------------------------------------------------------------
     // Orders → orders service
     // ------------------------------------------------------------------

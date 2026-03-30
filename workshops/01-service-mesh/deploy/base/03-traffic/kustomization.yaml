@@ -5,3 +5,5 @@ resources:
   - peer-authentication.yaml
   - payments-destination-rule.yaml
   - payments-virtual-service.yaml
+  - catalog-destination-rule.yaml
+  - catalog-virtual-service.yaml

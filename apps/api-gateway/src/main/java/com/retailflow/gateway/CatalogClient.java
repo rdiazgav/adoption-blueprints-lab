@@ -21,6 +21,14 @@ public interface CatalogClient {
     Response getProduct(@PathParam("id") Long id);
 
     @GET
+    @Path("/products/chaos/enable")
+    Response chaosEnable();
+
+    @GET
+    @Path("/products/chaos/disable")
+    Response chaosDisable();
+
+    @GET
     @Path("/q/health/live")
     Response liveness();
 }
