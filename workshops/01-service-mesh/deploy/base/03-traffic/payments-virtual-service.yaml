@@ -1,0 +1,18 @@
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: payments
+  namespace: retailflow
+spec:
+  hosts:
+    - payments
+  http:
+    - route:
+        - destination:
+            host: payments
+            subset: v1
+          weight: 90
+        - destination:
+            host: payments
+            subset: v2
+          weight: 10

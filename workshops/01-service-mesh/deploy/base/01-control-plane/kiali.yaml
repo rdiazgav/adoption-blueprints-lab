@@ -1,0 +1,15 @@
+apiVersion: kiali.io/v1alpha1
+kind: Kiali
+metadata:
+  name: kiali
+  namespace: istio-system
+spec:
+  istio_namespace: istio-system
+  auth:
+    strategy: openshift
+  deployment:
+    accessible_namespaces:
+      - retailflow
+  external_services:
+    prometheus:
+      url: http://prometheus:9090
