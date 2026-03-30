@@ -8,7 +8,7 @@ spec:
   subsets:
     - name: v1
       labels:
-        app.kubernetes.io/version: "1.0.0"
+        app.kubernetes.io/version: "v1"
     - name: v2
       labels:
-        app.kubernetes.io/version: "2.0.0"
+        app.kubernetes.io/version: "v2"

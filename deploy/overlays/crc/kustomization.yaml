@@ -7,6 +7,7 @@ resources:
   - ../../base
   - frontend-route.yaml
   - retailflow-config.yaml
+  - postgresql-pvc.yaml
 
 patches:
   # Quarkus services: cpu 100m/500m, memory 256Mi/512Mi
@@ -32,6 +33,20 @@ patches:
     target:
       kind: Deployment
       name: "(postgresql-orders|postgresql-catalog|postgresql-payments)"
+
+  # PostgreSQL: replace emptyDir with PVC
+  - path: patches/patch-postgresql-catalog.yaml
+    target:
+      kind: Deployment
+      name: postgresql-catalog
+  - path: patches/patch-postgresql-orders.yaml
+    target:
+      kind: Deployment
+      name: postgresql-orders
+  - path: patches/patch-postgresql-payments.yaml
+    target:
+      kind: Deployment
+      name: postgresql-payments
 
   # Redis: cpu 50m/100m, memory 64Mi/128Mi
   - path: patches/redis-resources.yaml

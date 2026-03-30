@@ -7,3 +7,4 @@ resources:
   - payments-virtual-service.yaml
   - catalog-destination-rule.yaml
   - catalog-virtual-service.yaml
+  - frontend-peer-authentication.yaml

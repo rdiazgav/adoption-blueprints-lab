@@ -1,0 +1,11 @@
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: frontend-permissive
+  namespace: retailflow
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: frontend
+  mtls:
+    mode: PERMISSIVE
