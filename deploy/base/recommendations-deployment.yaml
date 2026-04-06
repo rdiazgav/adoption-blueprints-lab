@@ -19,7 +19,10 @@ spec:
         app.kubernetes.io/name: recommendations
         app.kubernetes.io/version: "1.0.0"
         app.kubernetes.io/part-of: retailflow
+      annotations:
+        sidecar.istio.io/inject: "true"
     spec:
+      serviceAccountName: recommendations
       containers:
         - name: recommendations
           image: quay.io/rdiazgav/retailflow-recommendations:1.0.1

@@ -19,7 +19,10 @@ spec:
         app.kubernetes.io/name: catalog
         app.kubernetes.io/version: "1.0.0"
         app.kubernetes.io/part-of: retailflow
+      annotations:
+        sidecar.istio.io/inject: "true"
     spec:
+      serviceAccountName: catalog
       containers:
         - name: catalog
           image: quay.io/rdiazgav/retailflow-catalog:1.0.8

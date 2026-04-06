@@ -10,8 +10,18 @@ resources:
   - postgresql-pvc.yaml
 
 patches:
-  # All deployments: cpu 50m/300m, memory 128Mi/384Mi
-  - path: patches/patch-resources-all.yaml
+  # Per-deployment resource limits: cpu 50m/300m, memory 128Mi/384Mi
+  - path: patches/patch-api-gateway-resources.yaml
+  - path: patches/patch-catalog-resources.yaml
+  - path: patches/patch-frontend-resources.yaml
+  - path: patches/patch-orders-resources.yaml
+  - path: patches/patch-payments-v1-resources.yaml
+  - path: patches/patch-payments-v2-resources.yaml
+  - path: patches/patch-recommendations-resources.yaml
+  - path: patches/patch-postgresql-catalog-resources.yaml
+  - path: patches/patch-postgresql-orders-resources.yaml
+  - path: patches/patch-postgresql-payments-resources.yaml
+  - path: patches/patch-redis-resources.yaml
 
   # PostgreSQL: replace emptyDir with PVC
   - path: patches/patch-postgresql-catalog.yaml

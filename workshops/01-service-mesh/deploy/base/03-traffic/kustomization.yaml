@@ -9,3 +9,4 @@ resources:
   - catalog-virtual-service.yaml
   - frontend-peer-authentication.yaml
   - gateway-api.yaml
+  - authz-payments.yaml

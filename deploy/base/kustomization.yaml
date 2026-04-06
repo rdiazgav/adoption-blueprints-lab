@@ -7,6 +7,9 @@ resources:
   # Namespace
   - namespace.yaml
 
+  # ServiceAccounts
+  - serviceaccounts.yaml
+
   # Application services
   - api-gateway-deployment.yaml
   - api-gateway-service.yaml
