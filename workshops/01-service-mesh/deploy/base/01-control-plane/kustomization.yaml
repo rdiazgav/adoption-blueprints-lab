@@ -8,4 +8,5 @@ resources:
   - istio-cni.yaml
   - istio.yaml
   - kiali.yaml
+  - ossmconsole.yaml
   - gateway-infra.yaml
