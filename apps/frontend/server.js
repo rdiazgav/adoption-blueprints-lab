@@ -17,7 +17,7 @@ app.use(
   createProxyMiddleware({
     target: API_GATEWAY_URL,
     changeOrigin: true,
-    pathFilter: '/api',
+    pathFilter: '/api/**',
     on: {
       error: (err, req, res) => {
         console.error('[proxy error]', err.message);
