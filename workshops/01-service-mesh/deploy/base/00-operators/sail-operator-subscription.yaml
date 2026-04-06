@@ -6,5 +6,6 @@ metadata:
 spec:
   channel: stable
   name: sailoperator
-  source: redhat-operators
+  source: community-operators
   sourceNamespace: openshift-marketplace
+  installPlanApproval: Automatic

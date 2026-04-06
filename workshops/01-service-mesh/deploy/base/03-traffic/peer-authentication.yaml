@@ -6,3 +6,8 @@ metadata:
 spec:
   mtls:
     mode: STRICT
+  portLevelMtls:
+    5432:
+      mode: DISABLE
+    6379:
+      mode: DISABLE
