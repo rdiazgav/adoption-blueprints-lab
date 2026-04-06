@@ -22,7 +22,7 @@ spec:
     spec:
       containers:
         - name: recommendations
-          image: quay.io/rdiazgav/retailflow-recommendations:1.0.0
+          image: quay.io/rdiazgav/retailflow-recommendations:1.0.1
           ports:
             - containerPort: 8000
               protocol: TCP

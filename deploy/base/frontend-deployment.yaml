@@ -22,7 +22,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: quay.io/rdiazgav/retailflow-frontend:1.0.0
+          image: quay.io/rdiazgav/retailflow-frontend:1.0.5
           ports:
             - containerPort: 3000
               protocol: TCP
