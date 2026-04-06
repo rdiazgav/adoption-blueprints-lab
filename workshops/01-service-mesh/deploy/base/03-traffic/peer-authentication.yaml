@@ -6,8 +6,55 @@ metadata:
 spec:
   mtls:
     mode: STRICT
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: orders-db-permissive
+  namespace: retailflow
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orders
   portLevelMtls:
-    5432:
+    "5432":
       mode: DISABLE
-    6379:
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: catalog-db-permissive
+  namespace: retailflow
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: catalog
+  portLevelMtls:
+    "5432":
+      mode: DISABLE
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: payments-db-permissive
+  namespace: retailflow
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: payments
+  portLevelMtls:
+    "5432":
+      mode: DISABLE
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: redis-permissive
+  namespace: retailflow
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: recommendations
+  portLevelMtls:
+    "6379":
       mode: DISABLE

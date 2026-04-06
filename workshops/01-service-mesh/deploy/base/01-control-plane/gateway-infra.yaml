@@ -78,3 +78,19 @@ spec:
     targetPort: http2
   tls:
     termination: edge
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: cloudhop-mesh
+  namespace: istio-ingress
+spec:
+  host: cloudhop-mesh.apps-crc.testing
+  to:
+    kind: Service
+    name: cloudhop-gateway-istio
+  port:
+    targetPort: 80
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

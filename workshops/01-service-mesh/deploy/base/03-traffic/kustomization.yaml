@@ -8,3 +8,4 @@ resources:
   - catalog-destination-rule.yaml
   - catalog-virtual-service.yaml
   - frontend-peer-authentication.yaml
+  - gateway-api.yaml
