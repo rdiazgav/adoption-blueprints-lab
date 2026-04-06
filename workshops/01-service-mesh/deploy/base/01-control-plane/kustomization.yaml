@@ -7,6 +7,7 @@ resources:
   - namespace-istio-ingress.yaml
   - istio-cni.yaml
   - istio.yaml
+  - prometheus.yaml
   - kiali.yaml
   - ossmconsole.yaml
   - gateway-infra.yaml
