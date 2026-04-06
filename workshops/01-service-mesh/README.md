@@ -1,100 +1,100 @@
-# Workshop 01 — Service Mesh (OSSM 3.x / Sail Operator)
+# Workshop 01 — Service Mesh with OpenShift Service Mesh 3.x
 
-This workshop deploys OpenShift Service Mesh 3.x using the Sail Operator and Kiali
-on top of the RetailFlow application. It demonstrates mTLS enforcement, traffic
-splitting between payments v1/v2, and mesh observability via Kiali.
+This workshop installs OpenShift Service Mesh 3.x (Sail Operator) on top of the
+RetailFlow application and walks through five progressive scenarios that demonstrate
+the core value of a service mesh: visibility, secure ingress, traffic control, failure
+isolation, and zero-trust authorization.
 
-Estimated time: **45–60 minutes**
+Estimated total time: **60–90 minutes**
+
+---
+
+## Architecture
+
+```
+Internet
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────┐
+│ OpenShift Router (edge TLS termination)                     │
+└─────────────────────┬───────────────────────────────────────┘
+                      │ HTTPS → HTTP
+                      ▼
+┌─────────────────────────────────────────────────────────────┐
+│ Namespace: istio-ingress                                    │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  Gateway API (cloudhop-gateway)                      │  │
+│  │  istio-ingressgateway pod  [Envoy]                   │  │
+│  └──────────────────────┬───────────────────────────────┘  │
+└─────────────────────────┼───────────────────────────────────┘
+                          │ HTTPRoute → frontend:3000
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│ Namespace: retailflow  (mTLS STRICT, sidecar injected)      │
+│                                                             │
+│  [frontend]──────► [api-gateway]                            │
+│                         │                                   │
+│             ┌───────────┼────────────────┐                  │
+│             ▼           ▼                ▼                  │
+│         [orders]    [catalog]    [recommendations]          │
+│             │           │                                   │
+│             ▼           ▼                                   │
+│        [payments]  [postgresql]                             │
+│        v1 (90%)                                             │
+│        v2 (10%)                                             │
+│                                                             │
+│  Every arrow = mTLS-encrypted, Envoy-proxied connection     │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ---
 
 ## Prerequisites
 
-- RetailFlow deployed and healthy via `workshops/00-setup/`
-- `cluster-admin` permissions
-- OpenShift 4.14+ or CRC with >= 16 GB RAM
+- **Workshop 00 completed** — RetailFlow deployed and all pods healthy in `retailflow`
+- `cluster-admin` permissions on OpenShift 4.14+ or CRC (>= 16 GB RAM)
+- `oc` CLI configured and logged in
+
+Verify the baseline before starting:
+
+```bash
+oc get pods -n retailflow --field-selector=status.phase=Running | wc -l
+# Expected: 11 or more running pods
+```
 
 ---
 
-## What gets deployed
+## Apply everything at once
 
-| Layer | Resources |
-|---|---|
-| Operators | Sail Operator (OSSM), Kiali Operator |
-| Control plane | `istio-system`, `istio-cni`, `istio-ingress` namespaces; IstioCNI, Istio CR, Kiali CR |
-| Gateway infra | ServiceAccount, Role, RoleBinding, Deployment, Service, Route in `istio-ingress` |
-| Namespace config | Mesh labels on `retailflow` namespace (enables sidecar injection) |
-| Traffic policy | PeerAuthentication (STRICT mTLS), DestinationRule + VirtualService for payments canary (90/10) |
-
----
-
-## Step 1 — Apply the mesh manifests
+To deploy all mesh resources in a single command:
 
 ```bash
 oc apply -k workshops/01-service-mesh/deploy/overlays/crc
 ```
 
-**Expected output:**
-```
-namespace/istio-system created
-namespace/istio-cni created
-namespace/istio-ingress created
-namespace/retailflow configured
-operatorgroup.operators.coreos.com/global-operators configured
-subscription.operators.coreos.com/sailoperator created
-subscription.operators.coreos.com/kiali-ossm created
-istiocni.sailoperator.io/default created
-istio.sailoperator.io/default created
-kiali.kiali.io/kiali created
-serviceaccount/cloudhop-gateway-sa created
-role.rbac.authorization.k8s.io/istio-ingressgateway-sds created
-rolebinding.rbac.authorization.k8s.io/istio-ingressgateway-sds created
-deployment.apps/istio-ingressgateway created
-service/istio-ingressgateway created
-route.route.openshift.io/istio-ingressgateway created
-peerauthentication.security.istio.io/default created
-peerauthentication.security.istio.io/frontend-permissive created
-destinationrule.networking.istio.io/payments created
-virtualservice.networking.istio.io/payments created
-destinationrule.networking.istio.io/catalog created
-virtualservice.networking.istio.io/catalog created
-```
+Then follow the verification steps in each scenario below to understand what was deployed.
 
-**What to look for:**
-- All resources show `created` or `configured` — not `error`
-- The `retailflow` namespace shows `configured` (it already existed, now has mesh labels)
-- If any Istio or Kiali CRs fail with `no matches for kind`, the operator has not finished installing — wait and re-apply
+## Apply scenario by scenario
 
-**Common issues:**
-| Symptom | Cause | Fix |
+Each scenario builds on the previous one. Apply them in order for a guided experience:
+
+| Scenario | Resources | Apply command |
 |---|---|---|
-| `no matches for kind "Istio"` | Sail Operator CSV not yet Succeeded | Wait 2–3 minutes and re-run `oc apply -k` |
-| `no matches for kind "Kiali"` | Kiali Operator CSV not yet Succeeded | Same as above |
-| `namespace "retailflow" not found` | Workshop 00 not completed | Run Workshop 00 first |
+| 1 — Mesh entry | Operators, control plane, namespace labels | See Step 1 below |
+| 2 — Ingress gateway | Gateway API + Route | Included in Step 1 |
+| 3 — Canary release | DestinationRule + VirtualService for payments | `03-traffic/payments-*.yaml` |
+| 4 — Circuit breaker | DestinationRule + VirtualService for catalog | `03-traffic/catalog-*.yaml` |
+| 5 — Authorization | AuthorizationPolicy for payments | `03-traffic/authz-payments.yaml` |
 
 ---
 
-## Step 2 — Wait for operators to be ready
-
-Operator installation is asynchronous. Monitor progress:
+## Step 1 — Install the mesh
 
 ```bash
-oc get csv -n openshift-operators -w
+oc apply -k workshops/01-service-mesh/deploy/overlays/crc
 ```
 
-**Expected output** (after 2–4 minutes):
-```
-NAME                      DISPLAY                    VERSION   REPLACES   PHASE
-sailoperator.v1.0.0       Sail Operator              1.0.0                Succeeded
-kiali-operator.v2.4.0     Kiali Operator             2.4.0                Succeeded
-```
-
-**What to look for:**
-- `PHASE` must be `Succeeded` for both operators before proceeding
-- `Installing` is normal for the first 1–3 minutes
-- `Failed` means there was a problem fetching the operator bundle — check connectivity to `registry.redhat.io`
-
-Wait for both CSVs to reach Succeeded:
+Wait for operators:
 
 ```bash
 oc wait --for=jsonpath='{.status.phase}'=Succeeded \
@@ -106,451 +106,557 @@ oc wait --for=jsonpath='{.status.phase}'=Succeeded \
   -n openshift-operators --timeout=300s
 ```
 
-**Expected output:**
-```
-clusterserviceversion.operators.coreos.com/sailoperator.v1.0.0 condition met
-clusterserviceversion.operators.coreos.com/kiali-operator.v2.4.0 condition met
-```
-
-**Common issues:**
-| Symptom | Cause | Fix |
-|---|---|---|
-| `timed out waiting for the condition` | Operator install stalled | Check `oc get events -n openshift-operators` for pull errors |
-| CSV stuck in `Installing` | Operator pod crash | Check: `oc get pods -n openshift-operators` and look for `CrashLoopBackOff` |
-| `error: label selector ... found no objects` | Subscription not created | Re-apply: `oc apply -k workshops/01-service-mesh/deploy/overlays/crc` |
-
----
-
-## Step 3 — Verify the control plane
-
-Check the Istio control plane status:
+Wait for istiod:
 
 ```bash
-oc get istio default
+oc wait --for=condition=Ready pod -l app=istiod \
+  -n istio-system --timeout=180s
 ```
 
-**Expected output:**
-```
-NAME      REVISIONS   READY   IN USE   ACTIVE REVISION   STATUS    AGE
-default   1           1       1        default-v1-24-3   Healthy   8m
-```
-
-**What to look for:**
-- `STATUS` is `Healthy`
-- `READY` equals `REVISIONS` — if it shows `0/1`, istiod is still starting
-
-Check IstioCNI:
-
-```bash
-oc get istiocni default
-```
-
-**Expected output:**
-```
-NAME      READY   STATUS    AGE
-default   True    Healthy   8m
-```
-
-Check the Kiali CR:
-
-```bash
-oc get kiali kiali -n istio-system
-```
-
-**Expected output:**
-```
-NAME    AGE
-kiali   6m
-```
-
-Verify the control plane pods are running:
-
-```bash
-oc get pods -n istio-system
-```
-
-**Expected output:**
-```
-NAME                      READY   STATUS    RESTARTS   AGE
-istiod-default-xxx-yyyyy   1/1     Running   0          8m
-```
-
-**What to look for:**
-- `istiod-default-xxx-yyyyy` is `1/1 Running` — this is the Pilot/istiod pod that manages the mesh
-- The Kiali pod appears here once the Kiali CR is reconciled (may take an extra 2–3 minutes)
-
-Check istiod is fully ready:
-
-```bash
-oc wait --for=condition=Ready pod -l app=istiod -n istio-system --timeout=180s
-```
-
-**Expected output:**
-```
-pod/istiod-default-7c9b8d6f5-m4rvt condition met
-```
-
-**Common issues:**
-| Symptom | Cause | Fix |
-|---|---|---|
-| `STATUS: Reconciling` for minutes | Operator waiting for IstioCNI | Verify IstioCNI is Healthy first |
-| istiod pod in `Pending` | Insufficient cluster resources | Check node allocatable: `oc describe node` |
-| `STATUS: Error` on Istio CR | Configuration validation failure | Check: `oc describe istio default` for the error message |
-
----
-
-## Step 4 — Verify the ingress gateway
-
-```bash
-oc get pods -n istio-ingress
-```
-
-**Expected output:**
-```
-NAME                                    READY   STATUS    RESTARTS   AGE
-istio-ingressgateway-6d8f7c9b4-p3wkn   1/1     Running   0          7m
-```
-
-**What to look for:**
-- `1/1 Running` — the `1/1` shows the injected Envoy sidecar is the container (gateway injection replaces the app container with the proxy)
-
-```bash
-oc get route istio-ingressgateway -n istio-ingress
-```
-
-**Expected output:**
-```
-NAME                   HOST/PORT                          PATH   SERVICES               PORT    TERMINATION   WILDCARD
-istio-ingressgateway   cloudhop-mesh.apps-crc.testing            istio-ingressgateway   http2   edge          None
-```
-
-**What to look for:**
-- `HOST/PORT` matches `cloudhop-mesh.apps-crc.testing`
-- `TERMINATION` is `edge` — TLS is terminated at the OpenShift router; the gateway receives plain HTTP
-
-**Common issues:**
-| Symptom | Cause | Fix |
-|---|---|---|
-| Gateway pod stays `0/1` | Sidecar injection not triggered | Verify `istio-ingress` namespace has no injection label conflicts; restart the pod |
-| Pod in `CrashLoopBackOff` | RBAC missing for SDS | Verify the Role and RoleBinding from `gateway-infra.yaml` were applied |
-
----
-
-## Step 5 — Verify namespace labels and sidecar injection
-
-Check that the retailflow namespace has the mesh labels:
-
-```bash
-oc get namespace retailflow --show-labels
-```
-
-**Expected output:**
-```
-NAME         STATUS   AGE   LABELS
-retailflow   Active   45m   istio-discovery=enabled,istio-injection=enabled,kubernetes.io/metadata.name=retailflow
-```
-
-**What to look for:**
-- Both `istio-injection=enabled` and `istio-discovery=enabled` must be present
-- `istio-injection=enabled` triggers automatic sidecar injection on new pods
-- `istio-discovery=enabled` matches the `discoverySelectors` in the Istio CR so istiod watches this namespace
-
-Restart the retailflow pods to trigger sidecar injection:
+Restart retailflow pods to inject sidecars:
 
 ```bash
 oc rollout restart deployment -n retailflow
-```
-
-Wait for rollout to complete:
-
-```bash
 oc rollout status deployment/api-gateway -n retailflow
-oc rollout status deployment/catalog -n retailflow
-oc rollout status deployment/orders -n retailflow
-oc rollout status deployment/payments-v1 -n retailflow
-oc rollout status deployment/payments-v2 -n retailflow
-oc rollout status deployment/recommendations -n retailflow
-oc rollout status deployment/frontend -n retailflow
 ```
-
-**Expected output** (for each):
-```
-deployment "api-gateway" successfully rolled out
-```
-
-Verify all pods now have 2 containers (app + Envoy sidecar):
-
-```bash
-oc get pods -n retailflow
-```
-
-**Expected output:**
-```
-NAME                                  READY   STATUS    RESTARTS   AGE
-api-gateway-7d9f8b6c4-xk2pn           2/2     Running   0          2m
-catalog-6c8d9f7b5-m9rvt               2/2     Running   0          2m
-frontend-5b7c6d8f9-p4wzq              2/2     Running   0          2m
-orders-8f6b5c7d4-t7jkn                2/2     Running   0          2m
-payments-v1-9d7c8b6f5-h3mnp           2/2     Running   0          2m
-payments-v2-4f8c7d9b6-r6lqx           2/2     Running   0          2m
-postgresql-catalog-7b9c8d6f5-w2vks    1/1     Running   0          45m
-postgresql-orders-6d8f7c9b4-n8ptr     1/1     Running   0          45m
-postgresql-payments-5c9b8d7f6-k5wjm   1/1     Running   0          45m
-recommendations-8c6d7f9b5-q9xtn       2/2     Running   0          2m
-redis-7f9c8b6d5-v4zrp                 1/1     Running   0          45m
-```
-
-**What to look for:**
-- Application pods show `2/2` — the second container is the Envoy proxy (`istio-proxy`)
-- PostgreSQL and Redis show `1/1` — these were excluded from injection intentionally (no mesh label on the pod template)
-- Any pod still showing `1/1` after the rollout did not get the sidecar — check the namespace labels were applied before the rollout
-
-Confirm container names:
-
-```bash
-oc get pods -n retailflow -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[*].name}{"\n"}{end}'
-```
-
-**Expected output:**
-```
-api-gateway-7d9f8b6c4-xk2pn           api-gateway istio-proxy
-catalog-6c8d9f7b5-m9rvt               catalog istio-proxy
-frontend-5b7c6d8f9-p4wzq              frontend istio-proxy
-orders-8f6b5c7d4-t7jkn                orders istio-proxy
-payments-v1-9d7c8b6f5-h3mnp           payments istio-proxy
-payments-v2-4f8c7d9b6-r6lqx           payments istio-proxy
-postgresql-catalog-7b9c8d6f5-w2vks    postgresql
-postgresql-orders-6d8f7c9b4-n8ptr     postgresql
-postgresql-payments-5c9b8d7f6-k5wjm   postgresql
-recommendations-8c6d7f9b5-q9xtn       recommendations istio-proxy
-redis-7f9c8b6d5-v4zrp                 redis
-```
-
-**Common issues:**
-| Symptom | Cause | Fix |
-|---|---|---|
-| Pod shows `1/1` after rollout | Injection webhook not ready when pod was scheduled | Wait for istiod to be healthy, then re-roll: `oc rollout restart deployment/<name> -n retailflow` |
-| Pod stuck in `Init:0/1` after restart | Envoy proxy waiting for xDS config | Usually resolves in 30–60 seconds; if not, check istiod logs |
 
 ---
 
-## Step 6 — Verify traffic policies
-
-Check the PeerAuthentication resources:
-
-```bash
-oc get peerauthentication -n retailflow
-```
-
-**Expected output:**
-```
-NAME                  MODE         AGE
-default               STRICT       10m
-frontend-permissive   PERMISSIVE   10m
-```
-
-**What to look for:**
-- `default` in STRICT mode means all pod-to-pod traffic in `retailflow` requires mTLS
-- `frontend-permissive` overrides STRICT for the frontend pod, allowing the OpenShift router to connect over plain HTTP (edge TLS termination)
-
-Check the DestinationRules:
-
-```bash
-oc get destinationrule -n retailflow
-```
-
-**Expected output:**
-```
-NAME       HOST       AGE
-catalog    catalog    10m
-payments   payments   10m
-```
-
-Check the VirtualServices:
-
-```bash
-oc get virtualservice -n retailflow
-```
-
-**Expected output:**
-```
-NAME       GATEWAYS   HOSTS        AGE
-catalog               ["catalog"]  10m
-payments              ["payments"] 10m
-```
-
-**What to look for:**
-- Both DestinationRules and VirtualServices exist for `payments` (canary split) and `catalog` (circuit breaker + retry)
-- `GATEWAYS` column is empty — these are internal mesh policies, not exposed via the ingress gateway
-
 ---
 
-## Step 7 — Open Kiali
+## Scenario 1 — Mesh entry: visibility and mTLS
 
-Get the Kiali route:
+Estimated time: **10 minutes**
 
-```bash
-oc get route kiali -n istio-system -o jsonpath='{.spec.host}'
-```
+### What is this?
 
-**Expected output:**
-```
-kiali-istio-system.apps-crc.testing
-```
+When you add a service mesh, every pod gets a sidecar proxy (Envoy) injected
+automatically. All traffic between services flows through these proxies, giving
+you encryption, metrics, and tracing without changing a single line of
+application code.
 
-Open `https://kiali-istio-system.apps-crc.testing` in your browser and log in with your OpenShift credentials.
+### The problem it solves
 
-**What to look for in the Kiali Graph:**
+Without a mesh, service-to-service traffic is invisible. An operations team
+managing CloudHop Travel has no way to answer basic questions: which services
+call which others? How long do calls take? Are there errors? Is traffic
+encrypted in transit? They can only find out when a customer complains.
 
-1. Navigate to **Graph** and select namespace `retailflow`
-2. Set the traffic source to **Last 1m** and enable **Traffic Animation**
-3. Generate traffic first:
+### How it works in CloudHop Travel
+
+Every RetailFlow pod (api-gateway, catalog, orders, payments, recommendations,
+frontend) gets an Envoy sidecar injected at startup. The `retailflow` namespace
+is labelled `istio-injection: enabled`, and each Deployment has
+`sidecar.istio.io/inject: "true"` in its pod template for explicit control.
+
+Once injected, all calls between services — for example, api-gateway calling
+catalog to list destinations — are automatically encrypted with mTLS. Neither
+service needs to configure TLS. The proxies handle the certificate lifecycle
+using Istio's built-in CA.
+
+### What you will see in Kiali
+
+1. Open Kiali: `https://$(oc get route kiali -n istio-system -o jsonpath='{.spec.host}')`
+2. Navigate to **Graph** → select namespace `retailflow` → set time range to **Last 1m**
+3. Generate traffic so the graph populates:
 
 ```bash
 oc port-forward deployment/api-gateway 8080:8080 -n retailflow &
+PF_PID=$!
+sleep 2
 for i in $(seq 1 20); do
   curl -s http://localhost:8080/api/products > /dev/null
   curl -s http://localhost:8080/api/orders > /dev/null
 done
+kill $PF_PID 2>/dev/null
 ```
 
-**What you should see in Kiali:**
-- All services appear as nodes connected by edges
-- Edges show request rates (RPS) and success percentages
-- Lock icons on edges indicate mTLS is active between services
-- The `payments` service shows two versions (`v1`, `v2`) with weighted traffic
+You should see:
+- All services as nodes connected by directed edges
+- **Lock icons** on edges — these indicate mTLS is active on that connection
+- Request rates (RPS) and error percentages on each edge
+- The full call graph: frontend → api-gateway → catalog/orders/recommendations → payments/databases
 
-**Common issues:**
-| Symptom | Cause | Fix |
-|---|---|---|
-| Kiali graph is empty | No traffic has flowed yet | Generate traffic with the port-forward loop above |
-| Services appear but no lock icons | mTLS not active | Verify sidecars are injected (`2/2` pods) and PeerAuthentication is STRICT |
-| Kiali login fails | OpenShift OAuth not configured | Verify `spec.auth.strategy: openshift` in the Kiali CR |
+### Verify
+
+```bash
+# All pods should show 2/2 (app container + istio-proxy)
+oc get pods -n retailflow
+
+# Confirm container names
+oc get pods -n retailflow \
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[*].name}{"\n"}{end}'
+```
+
+**Expected output:**
+```
+api-gateway-7d9f8b6c4-xk2pn      api-gateway istio-proxy
+catalog-6c8d9f7b5-m9rvt          catalog istio-proxy
+frontend-5b7c6d8f9-p4wzq         frontend istio-proxy
+orders-8f6b5c7d4-t7jkn           orders istio-proxy
+payments-v1-9d7c8b6f5-h3mnp      payments istio-proxy
+payments-v2-4f8c7d9b6-r6lqx      payments istio-proxy
+postgresql-catalog-7b9c8d6f5-w2vks  postgresql
+postgresql-orders-6d8f7c9b4-n8ptr   postgresql
+postgresql-payments-5c9b8d7f6-k5wjm postgresql
+recommendations-8c6d7f9b5-q9xtn  recommendations istio-proxy
+redis-7f9c8b6d5-v4zrp            redis
+```
+
+### What to look for
+
+- Application pods show `2/2` — the second container is `istio-proxy`
+- PostgreSQL and Redis show `1/1` — they are excluded from injection (no mesh label on those pod templates)
+- In Kiali, lock icons appear on every service-to-service edge
+- The `default` PeerAuthentication shows STRICT mode:
+
+```bash
+oc get peerauthentication -n retailflow
+# NAME      MODE     AGE
+# default   STRICT   5m
+```
 
 ---
 
-## Scenario A — Canary traffic split (payments v1/v2)
+## Scenario 2 — Ingress Gateway: controlled mesh entry
 
-The VirtualService routes 90% of payments traffic to v1 and 10% to v2.
+Estimated time: **10 minutes**
 
-Generate traffic and observe the split:
+### What is this?
+
+An ingress gateway is the single controlled entry point into the mesh from
+outside the cluster. All external traffic enters through it, meaning Envoy
+applies policies — routing rules, TLS, rate limits — before the request ever
+reaches an application pod.
+
+### The problem it solves
+
+Without a gateway, external requests reach application pods directly through
+OpenShift Routes. Those routes bypass the mesh entirely: no mTLS, no Envoy
+metrics, no traffic policies. A customer hitting `cloudhop-mesh.apps-crc.testing`
+and a service inside the mesh calling another service would be treated
+completely differently — one is invisible to the mesh, one is not.
+
+### How it works in CloudHop Travel
+
+A `Gateway` resource (Gateway API) is deployed in `istio-ingress`. It listens
+on port 80 and allows routes from all namespaces. An `HTTPRoute` in `retailflow`
+attaches to this gateway and routes all traffic for `cloudhop-mesh.apps-crc.testing`
+to the `frontend` service on port 3000.
+
+An OpenShift `Route` points to the `cloudhop-gateway-istio` Service (auto-created
+by the Sail Operator's Gateway controller) with edge TLS termination and HTTP→HTTPS
+redirect.
+
+### What you will see in Kiali
+
+After sending external traffic through the route:
+- A gateway node appears at the edge of the graph
+- An edge from the gateway to `frontend` shows the incoming request rate
+- You can see end-to-end latency from the browser to the backend services
+
+### Apply
+
+The gateway resources are included in the base overlay. Verify the route exists:
+
+```bash
+oc get route cloudhop-mesh -n istio-ingress
+oc get gateway cloudhop-gateway -n istio-ingress
+oc get httproute cloudhop-frontend -n retailflow
+```
+
+### Verify
+
+```bash
+# Check the gateway pod is running and injected
+oc get pods -n istio-ingress
+
+# Check the route hostname
+oc get route cloudhop-mesh -n istio-ingress \
+  -o jsonpath='{.spec.host}'
+```
+
+**Expected output:**
+```
+NAME                    READY   STATUS    RESTARTS   AGE
+istio-ingressgateway-xxx-yyy   1/1   Running   0   10m
+
+cloudhop-mesh.apps-crc.testing
+```
+
+Test the gateway end-to-end:
+
+```bash
+curl -sk https://cloudhop-mesh.apps-crc.testing/health
+```
+
+**Expected output:**
+```json
+{"status":"ok","service":"frontend"}
+```
+
+### What to look for
+
+- The gateway pod shows `1/1` — it uses gateway injection mode (the proxy IS the container, no app container alongside it)
+- The Route uses `termination: edge` — TLS ends at the OpenShift router, the gateway receives plain HTTP on port 80
+- The `HTTPRoute` status shows `Accepted`:
+
+```bash
+oc get httproute cloudhop-frontend -n retailflow \
+  -o jsonpath='{.status.parents[0].conditions[?(@.type=="Accepted")].status}'
+# Expected: True
+```
+
+---
+
+## Scenario 3 — Canary release: payments v1/v2 with 90/10 split
+
+Estimated time: **10 minutes**
+
+### What is this?
+
+A canary release sends a small percentage of real traffic to a new version of
+a service while the majority still goes to the stable version. If the new version
+has a problem, only a fraction of users are affected and you can roll back instantly
+by updating the traffic weights.
+
+### The problem it solves
+
+CloudHop Travel is releasing payments v2, which includes a new fraud detection
+algorithm. Deploying it to 100% of users immediately is risky — if there is a
+bug in the payment flow, every transaction fails. A canary lets the team validate
+v2 with 10% of real bookings before committing to a full rollout.
+
+### How it works in CloudHop Travel
+
+Two Deployments exist: `payments-v1` and `payments-v2`. They share a single
+`payments` Kubernetes Service. Without a mesh, the Service would load-balance
+50/50. With the mesh:
+
+- A `DestinationRule` defines two subsets: `v1` (label `app.kubernetes.io/version: v1`)
+  and `v2` (label `app.kubernetes.io/version: v2`)
+- A `VirtualService` routes 90% of traffic to `v1` and 10% to `v2`
+
+Envoy enforces the weights at the client proxy side, before the request leaves
+the calling pod.
+
+### What you will see in Kiali
+
+1. In the Graph view, the `payments` node expands to show `payments v1` and `payments v2`
+2. Edge labels show the approximate split: roughly 9 requests to v1 for every 1 to v2
+3. Both versions show a green health indicator
+
+### Apply
+
+The resources are already applied as part of the base overlay. Confirm:
+
+```bash
+oc get destinationrule payments -n retailflow
+oc get virtualservice payments -n retailflow
+```
+
+### Verify
+
+Generate 50 payment requests and observe the split:
 
 ```bash
 oc port-forward deployment/api-gateway 8080:8080 -n retailflow &
 PF_PID=$!
 sleep 2
 
+V1=0; V2=0
 for i in $(seq 1 50); do
-  curl -s -o /dev/null -w "%{http_code}\n" \
-    -X POST http://localhost:8080/api/payments \
+  RESP=$(curl -s -X POST http://localhost:8080/api/payments \
     -H "Content-Type: application/json" \
-    -d '{"orderId":1,"amount":99.99,"currency":"USD"}'
+    -d '{"orderId":1,"amount":99.99,"currency":"USD"}')
+  if echo "$RESP" | grep -q '"version":"v2"'; then
+    V2=$((V2 + 1))
+  else
+    V1=$((V1 + 1))
+  fi
 done
 
 kill $PF_PID 2>/dev/null
+echo "v1: $V1 / v2: $V2 (out of 50)"
 ```
 
-**Expected output** (50 requests, approximately 45 to v1 and 5 to v2):
+**Expected output** (approximate — weights are probabilistic):
 ```
-200
-200
-200
-200
-200
-...
+v1: 44 / v2: 6 (out of 50)
 ```
 
-Verify the split in Kiali:
+Check the VirtualService weights:
 
-**What you should see:**
-- In the Graph view, the `payments` node expands into `payments v1` and `payments v2`
-- The edge labels show approximate request counts: ~90% to v1, ~10% to v2
-- Both versions show green (healthy) status
+```bash
+oc get virtualservice payments -n retailflow \
+  -o jsonpath='{.spec.http[0].route[*].weight}'
+# Expected: 90 10
+```
 
-**Common issues:**
-| Symptom | Cause | Fix |
-|---|---|---|
-| All traffic goes to one version | DestinationRule subset labels don't match pod labels | Verify pod labels: `oc get pods -n retailflow -l app.kubernetes.io/name=payments --show-labels` |
-| `503 No healthy upstream` | VirtualService references a subset with no matching pods | Check subset labels in `payments-destination-rule.yaml` match `app.kubernetes.io/version: v1` |
+### What to look for
+
+- `v1` receives approximately 90% of requests, `v2` approximately 10%
+- Both subsets are healthy (green in Kiali)
+- To shift more traffic to v2 (e.g. 50/50), edit the VirtualService weights:
+
+```bash
+oc patch virtualservice payments -n retailflow \
+  --type=json \
+  -p='[{"op":"replace","path":"/spec/http/0/route/0/weight","value":50},
+       {"op":"replace","path":"/spec/http/0/route/1/weight","value":50}]'
+```
 
 ---
 
-## Scenario B — Circuit breaker (catalog)
+## Scenario 4 — Circuit breaker: catalog failure isolation
 
-This scenario uses the chaos endpoint to make catalog return 503s, triggering Envoy's outlier detection.
+Estimated time: **15 minutes**
 
-**Step 1 — Run the chaos script:**
+### What is this?
+
+A circuit breaker detects when a downstream service is repeatedly failing and
+"opens the circuit" — stopping requests to the unhealthy service for a
+configurable period instead of letting them pile up. After the ejection period,
+a small percentage of requests are allowed through to test recovery.
+
+### The problem it solves
+
+The CloudHop catalog is the most-called service in the platform: every page load,
+every search, every recommendation refresh hits it. If the catalog pod develops
+a memory leak and starts returning 503 errors, without a circuit breaker those
+errors cascade: the api-gateway queues requests, threads block waiting for
+responses, and within minutes the api-gateway itself becomes unresponsive — taking
+down bookings and payments even though their pods are perfectly healthy.
+
+### How it works in CloudHop Travel
+
+The `catalog` DestinationRule is configured with `outlierDetection`:
+
+- After **3 consecutive 5xx or gateway errors**, the catalog host is ejected
+- It stays ejected for **30 seconds** (`baseEjectionTime`)
+- Up to **100% of hosts** can be ejected (`maxEjectionPercent: 100`)
+
+The `catalog` VirtualService adds:
+- A **3-second timeout** on all catalog calls
+- **2 retry attempts** on `gateway-error`, `connect-failure`, or `retriable-4xx`
+
+The catalog service has a `/chaos` toggle endpoint that makes it return 503
+without killing the pod, so Envoy sees real HTTP errors and triggers the ejection.
+
+### What you will see in Kiali
+
+During chaos:
+- The `catalog` node turns **red or orange**
+- Edge labels show a high error percentage (e.g. `503 100%`)
+- The `catalog` service sidebar shows an outlier ejection event
+
+After recovery (30 seconds):
+- The node returns to green
+- Error rate drops to 0%
+- Traffic resumes normally
+
+### Apply
+
+The circuit breaker resources are already applied. Verify:
+
+```bash
+oc get destinationrule catalog -n retailflow \
+  -o jsonpath='{.spec.trafficPolicy.outlierDetection}'
+
+oc get virtualservice catalog -n retailflow \
+  -o jsonpath='{.spec.http[0].timeout}'
+# Expected: 3s
+```
+
+### Run the chaos scenario
 
 ```bash
 ./scripts/chaos/break-catalog.sh
 ```
 
-**Expected output:**
-```
-==> Starting port-forward to api-gateway...
-==> Enabling chaos mode on catalog via http://localhost:8080/api/products/chaos/enable ...
-{"chaos":"enabled"}
-
-==> Catalog is now returning 503 on all product endpoints.
-    Envoy will record consecutive 5xx errors and eject the host after 3 failures.
-
-    Open Kiali and navigate to Graph > retailflow to watch the circuit open.
-    Kiali URL:
-      https://kiali-istio-system.apps-crc.testing
-
-==> Watching pods for 30 seconds (Ctrl-C to skip)...
-NAME                                  READY   STATUS    RESTARTS   AGE
-...
-
-==> Disabling chaos mode on catalog via http://localhost:8080/api/products/chaos/disable ...
-{"chaos":"disabled"}
-
-==> Chaos disabled. Watch Kiali to see the circuit close as catalog recovers.
-```
-
-**What to look for:**
-
-During the 30-second chaos window, make requests to catalog:
+While chaos is active, send requests to observe the circuit opening:
 
 ```bash
+oc port-forward deployment/api-gateway 8080:8080 -n retailflow &
+PF_PID=$!
+sleep 2
+
 for i in $(seq 1 15); do
-  curl -s -o /dev/null -w "products: %{http_code}\n" \
-    http://localhost:8080/api/products
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+    http://localhost:8080/api/products)
+  echo "Request $i: HTTP $STATUS"
   sleep 1
 done
+
+kill $PF_PID 2>/dev/null
 ```
 
 **Expected output during chaos:**
 ```
-products: 503
-products: 503
-products: 503
-products: 503
-products: 503
+Request 1: HTTP 503
+Request 2: HTTP 503
+Request 3: HTTP 503
+Request 4: HTTP 503
 ...
 ```
 
-**What you should see in Kiali during chaos:**
-- The `catalog` service node turns red or orange
-- Edges to catalog show a high error rate percentage
-- After 3 consecutive errors, the outlier detection ejects the catalog host — subsequent calls may return `503 No healthy upstream` from Envoy itself
-- The `catalog` service shows a circuit-open indicator in the sidebar
-
-**After chaos is disabled:**
+**Expected output after chaos is disabled:**
 ```
-products: 200
-products: 200
-products: 200
+Request 12: HTTP 200
+Request 13: HTTP 200
+Request 14: HTTP 200
 ```
 
-**What you should see in Kiali after recovery:**
-- The `catalog` node returns to green
-- Error rate drops to 0%
-- Traffic resumes normally — the ejected host is re-admitted after `baseEjectionTime: 30s`
+### What to look for
 
-**Common issues:**
+- Requests return `503` immediately — Envoy is returning the error before the request reaches the catalog pod (the circuit is open)
+- After the 30-second `baseEjectionTime`, the host is readmitted and requests return `200`
+- In Kiali, the error rate spike and recovery are visible in the graph edge labels
+
+To restore catalog manually without waiting:
+
+```bash
+./scripts/chaos/restore-catalog.sh
+```
+
+---
+
+## Scenario 5 — AuthorizationPolicy: zero-trust between services
+
+Estimated time: **10 minutes**
+
+### What is this?
+
+An AuthorizationPolicy is a firewall rule at the application layer. It uses the
+mTLS peer identity (the ServiceAccount of the calling pod) to decide whether a
+request is allowed — not an IP address, which can be spoofed, but a
+cryptographically verified identity issued by Istio's CA.
+
+### The problem it solves
+
+CloudHop Travel processes real payments. By default, with mTLS enabled, any pod
+in the mesh can call any other pod. If the `recommendations` service (a Python
+microservice that reads mock data) is compromised through a dependency
+vulnerability, an attacker could use it to POST requests directly to the
+`payments` service and initiate fraudulent transactions. There is nothing in the
+network that would stop it — both pods are in the same namespace.
+
+An AuthorizationPolicy closes this gap: only the `orders` service — which holds
+the `orders` ServiceAccount — is permitted to call `payments`. Any other caller
+receives an immediate `403 RBAC: access denied`.
+
+### How it works in CloudHop Travel
+
+The policy selects pods with `app.kubernetes.io/name: payments` and defines a
+single ALLOW rule:
+
+- **From**: source principal `cluster.local/ns/retailflow/sa/orders`
+  (the `orders` ServiceAccount, verified via mTLS certificate)
+- **To**: HTTP methods `POST` and `GET`
+
+This works because:
+1. Each RetailFlow Deployment has a dedicated ServiceAccount (`orders`, `catalog`, etc.)
+2. Istio's CA issues an X.509 certificate with a SPIFFE URI encoding the ServiceAccount
+3. Envoy validates that URI before forwarding the request
+
+### What you will see in Kiali
+
+- In the **Graph** view, the edge from `orders` → `payments` shows normal traffic
+- If you generate a request from a different service (e.g. via `curl` from the catalog pod),
+  Kiali shows a `403` error on that edge
+
+### Apply
+
+The policy is already applied. Verify:
+
+```bash
+oc get authorizationpolicy payments-allow-orders-only -n retailflow
+```
+
+### Verify
+
+Test that `orders` can reach `payments` (authorized):
+
+```bash
+ORDERS_POD=$(oc get pod -n retailflow \
+  -l app.kubernetes.io/name=orders \
+  --field-selector=status.phase=Running \
+  -o jsonpath='{.items[0].metadata.name}')
+
+oc exec "$ORDERS_POD" -c orders -n retailflow -- \
+  curl -s -o /dev/null -w "%{http_code}" \
+  -X POST http://payments:8080/payments \
+  -H "Content-Type: application/json" \
+  -d '{"orderId":1,"amount":99.99}'
+# Expected: 200 or 400 (request reaches payments, which validates the payload)
+```
+
+Test that `catalog` cannot reach `payments` (unauthorized):
+
+```bash
+CATALOG_POD=$(oc get pod -n retailflow \
+  -l app.kubernetes.io/name=catalog \
+  --field-selector=status.phase=Running \
+  -o jsonpath='{.items[0].metadata.name}')
+
+oc exec "$CATALOG_POD" -c catalog -n retailflow -- \
+  curl -s -o /dev/null -w "%{http_code}" \
+  -X POST http://payments:8080/payments \
+  -H "Content-Type: application/json" \
+  -d '{"orderId":1,"amount":99.99}'
+# Expected: 403
+```
+
+### What to look for
+
+- The `orders` → `payments` call returns `200` or `400` (the payments service received it)
+- The `catalog` → `payments` call returns `403 RBAC: access denied` — Envoy rejected it
+  at the sidecar before it reached the payments application
+- In Kiali, the rejected call appears as a red `403` edge from `catalog` to `payments`
+
+---
+
+## Cleanup
+
+To remove all mesh resources while keeping RetailFlow running:
+
+```bash
+# Remove traffic policies
+oc delete -k workshops/01-service-mesh/deploy/base/03-traffic/
+
+# Remove control plane and namespaces
+oc delete -k workshops/01-service-mesh/deploy/base/01-control-plane/
+
+# Remove namespace mesh labels
+oc label namespace retailflow istio-injection- istio-discovery-
+
+# Restart pods to remove sidecars
+oc rollout restart deployment -n retailflow
+```
+
+To remove operators:
+
+```bash
+oc delete subscription sailoperator kiali-ossm -n openshift-operators
+oc delete csv -l operators.coreos.com/sailoperator.openshift-operators \
+  -n openshift-operators
+oc delete csv -l operators.coreos.com/kiali-ossm.openshift-operators \
+  -n openshift-operators
+```
+
+---
+
+## Troubleshooting
+
 | Symptom | Cause | Fix |
 |---|---|---|
-| `{"chaos":"enabled"}` but requests still return 200 | Port-forward not pointing to correct pod | Kill and restart: `kill $PF_PID && oc port-forward deployment/api-gateway 8080:8080 -n retailflow &` |
-| Circuit never opens in Kiali | Not enough requests to trigger outlier detection | Send more requests — outlier detection requires `consecutiveGatewayErrors: 3` |
-| After recovery, still getting 503 | Ejection period not expired | Wait 30 seconds (the configured `baseEjectionTime`) and retry |
+| Pods show `1/1` after rollout restart | Injection webhook not ready when pods scheduled | Wait for istiod: `oc wait --for=condition=Ready pod -l app=istiod -n istio-system --timeout=120s`, then re-roll |
+| `no matches for kind "Istio"` on apply | Sail Operator CSV not yet Succeeded | Wait 2–3 min and re-apply: `oc apply -k ...` |
+| `no matches for kind "Kiali"` on apply | Kiali Operator CSV not yet Succeeded | Same as above |
+| Kiali graph is empty | No traffic has been generated | Run the port-forward traffic loop in Scenario 1 |
+| No lock icons in Kiali | mTLS not enforced | Check PeerAuthentication: `oc get peerauthentication -n retailflow` |
+| `403` on all payments calls | AuthorizationPolicy applied before mTLS was working | Verify sidecars are `2/2` and delete/recreate the AuthorizationPolicy |
+| Database connections failing after mesh | mTLS applied to PostgreSQL port | Check the per-service port-level DISABLE policies: `oc get peerauthentication -n retailflow` |
+| Gateway pod stays `0/1` | `istio-ingress` namespace not labelled for injection | Check: `oc get ns istio-ingress --show-labels` — must have `istio-injection=enabled` |
+| `HTTPRoute` status not `Accepted` | Gateway API CRDs not installed | Sail Operator installs the CRDs; verify istiod is running first |
+| `curl` to `cloudhop-mesh.apps-crc.testing` returns connection refused | Route not created or `cloudhop-gateway-istio` Service not yet provisioned | Check: `oc get svc -n istio-ingress` and `oc get route -n istio-ingress` |
