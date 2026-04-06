@@ -10,29 +10,8 @@ resources:
   - postgresql-pvc.yaml
 
 patches:
-  # Quarkus services: cpu 100m/500m, memory 256Mi/512Mi
-  - path: patches/quarkus-resources.yaml
-    target:
-      kind: Deployment
-      name: "(api-gateway|orders|catalog|payments-v1|payments-v2)"
-
-  # recommendations: cpu 50m/200m, memory 128Mi/256Mi
-  - path: patches/recommendations-resources.yaml
-    target:
-      kind: Deployment
-      name: recommendations
-
-  # frontend: cpu 50m/200m, memory 128Mi/256Mi
-  - path: patches/frontend-resources.yaml
-    target:
-      kind: Deployment
-      name: frontend
-
-  # PostgreSQL: cpu 100m/300m, memory 256Mi/512Mi
-  - path: patches/postgresql-resources.yaml
-    target:
-      kind: Deployment
-      name: "(postgresql-orders|postgresql-catalog|postgresql-payments)"
+  # All deployments: cpu 50m/300m, memory 128Mi/384Mi
+  - path: patches/patch-resources-all.yaml
 
   # PostgreSQL: replace emptyDir with PVC
   - path: patches/patch-postgresql-catalog.yaml
@@ -47,9 +26,3 @@ patches:
     target:
       kind: Deployment
       name: postgresql-payments
-
-  # Redis: cpu 50m/100m, memory 64Mi/128Mi
-  - path: patches/redis-resources.yaml
-    target:
-      kind: Deployment
-      name: redis
