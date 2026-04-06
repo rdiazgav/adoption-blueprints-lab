@@ -22,7 +22,7 @@ spec:
     spec:
       containers:
         - name: catalog
-          image: quay.io/rdiazgav/retailflow-catalog:1.0.0
+          image: quay.io/rdiazgav/retailflow-catalog:1.0.8
           ports:
             - containerPort: 8080
               protocol: TCP
