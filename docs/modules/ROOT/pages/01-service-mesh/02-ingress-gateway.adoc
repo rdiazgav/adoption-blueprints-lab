@@ -1,0 +1,115 @@
+= Scenario 2 — Ingress Gateway: Controlled Mesh Entry
+:navtitle: Ingress Gateway
+
+Estimated time: *10 minutes*
+
+== What you will learn
+
+* Why a mesh ingress gateway is different from a plain OpenShift Route
+* How Gateway API (`Gateway` + `HTTPRoute`) replaces the legacy Istio `Gateway` + `VirtualService` pattern
+* How to verify that external traffic flows through Envoy before reaching the application
+* How to test the end-to-end path through the gateway
+
+== The Problem It Solves
+
+Without a gateway, external requests reach application pods directly through OpenShift Routes.
+Those routes bypass the mesh entirely: no mTLS, no Envoy metrics, no traffic policies.
+A customer hitting `cloudhop-mesh.apps-crc.testing` and a service inside the mesh calling another service would be treated completely differently — one is invisible to the mesh, one is not.
+
+== How It Works
+
+A `Gateway` resource (Gateway API) is deployed in `istio-ingress`.
+It listens on port 80 and allows routes from all namespaces.
+An `HTTPRoute` in `retailflow` attaches to this gateway and routes all traffic for `cloudhop-mesh.apps-crc.testing` to the `frontend` service on port 3000.
+
+An OpenShift `Route` points to the `cloudhop-gateway-istio` Service (auto-created by the Sail Operator's Gateway controller) with edge TLS termination and HTTP→HTTPS redirect.
+
+[NOTE]
+====
+The gateway pod uses *gateway injection mode* — the Envoy proxy IS the container.
+There is no application container alongside it.
+This is different from sidecar injection, where a second container is added.
+====
+
+== Verify
+
+The gateway resources are included in the base overlay applied in Scenario 1.
+Verify the resources exist:
+
+[source,bash]
+----
+oc get route cloudhop-mesh -n istio-ingress
+oc get gateway cloudhop-gateway -n istio-ingress
+oc get httproute cloudhop-frontend -n retailflow
+----
+
+Check the gateway pod:
+
+[source,bash]
+----
+oc get pods -n istio-ingress
+----
+
+.Expected output
+----
+NAME                                READY   STATUS    RESTARTS   AGE
+istio-ingressgateway-xxx-yyy        1/1     Running   0          10m
+----
+
+Check the route hostname:
+
+[source,bash]
+----
+oc get route cloudhop-mesh -n istio-ingress \
+  -o jsonpath='{.spec.host}'
+----
+
+.Expected output
+----
+cloudhop-mesh.apps-crc.testing
+----
+
+Test the gateway end-to-end:
+
+[source,bash]
+----
+curl -sk https://cloudhop-mesh.apps-crc.testing/health
+----
+
+.Expected output
+----
+{"status":"ok","service":"frontend"}
+----
+
+Verify the `HTTPRoute` was accepted by the gateway:
+
+[source,bash]
+----
+oc get httproute cloudhop-frontend -n retailflow \
+  -o jsonpath='{.status.parents[0].conditions[?(@.type=="Accepted")].status}'
+----
+
+.Expected output
+----
+True
+----
+
+== What to Look For
+
+* The gateway pod shows `1/1` — gateway injection mode (proxy IS the container)
+* The Route uses `termination: edge` — TLS ends at the OpenShift router, the gateway receives plain HTTP on port 80
+* The `HTTPRoute` status shows `Accepted: True`
+* In Kiali, a gateway node appears at the edge of the graph with an edge to `frontend`
+
+.Common issues
+[cols="2,2,3",options="header"]
+|===
+| Symptom | Cause | Fix
+| Gateway pod stays `0/1` | `istio-ingress` namespace not labelled for injection | Check: `oc get ns istio-ingress --show-labels` — must have `istio-injection=enabled`
+| `HTTPRoute` status not `Accepted` | Gateway API CRDs not installed | Sail Operator installs the CRDs; verify istiod is running first
+| `curl` returns connection refused | Route not created or `cloudhop-gateway-istio` Service not yet provisioned | Check: `oc get svc -n istio-ingress` and `oc get route -n istio-ingress`
+|===
+
+== Next Step
+
+xref:03-canary.adoc[Scenario 3 — Canary Release]

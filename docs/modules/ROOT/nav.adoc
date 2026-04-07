@@ -1,0 +1,15 @@
+* xref:index.adoc[Home]
+
+* Workshop 00 — Platform Setup
+** xref:00-setup/index.adoc[Overview]
+** xref:00-setup/01-prerequisites.adoc[Prerequisites]
+** xref:00-setup/02-deploy.adoc[Deploy RetailFlow]
+** xref:00-setup/03-verify.adoc[Verify the Deployment]
+
+* Workshop 01 — Service Mesh
+** xref:01-service-mesh/index.adoc[Overview]
+** xref:01-service-mesh/01-mesh-entry.adoc[Mesh Entry & mTLS]
+** xref:01-service-mesh/02-ingress-gateway.adoc[Ingress Gateway]
+** xref:01-service-mesh/03-canary.adoc[Canary Release]
+** xref:01-service-mesh/04-circuit-breaker.adoc[Circuit Breaker]
+** xref:01-service-mesh/05-authz-policy.adoc[Authorization Policy]

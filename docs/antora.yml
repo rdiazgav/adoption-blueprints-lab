@@ -1,0 +1,5 @@
+name: adoption-blueprints-lab
+title: Adoption Blueprints Lab
+version: main
+nav:
+  - modules/ROOT/nav.adoc

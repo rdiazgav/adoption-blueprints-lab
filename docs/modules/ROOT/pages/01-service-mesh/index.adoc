@@ -1,0 +1,106 @@
+= Workshop 01 — Service Mesh with OpenShift Service Mesh 3.x
+:navtitle: Overview
+
+This workshop installs OpenShift Service Mesh 3.x (Sail Operator) on top of the RetailFlow application and walks through five progressive scenarios demonstrating the core value of a service mesh: visibility, secure ingress, traffic control, failure isolation, and zero-trust authorization.
+
+Estimated total time: *60–90 minutes*
+
+== What you will learn
+
+* How to install OpenShift Service Mesh 3.x using the Sail Operator
+* How sidecar injection adds Envoy proxies to every pod without code changes
+* How mTLS encrypts all service-to-service traffic automatically
+* How to configure a Gateway API ingress that flows through the mesh
+* How to do a canary release with weighted traffic splitting
+* How a circuit breaker isolates failures in a downstream service
+* How AuthorizationPolicy enforces zero-trust between services using SPIFFE identities
+
+== Prerequisites
+
+* xref:../00-setup/index.adoc[Workshop 00] completed — RetailFlow deployed and all pods healthy in `retailflow`
+* `cluster-admin` permissions on OpenShift 4.14+ or CRC (>= 16 GB RAM)
+* `oc` CLI configured and logged in
+
+Verify the baseline before starting:
+
+[source,bash]
+----
+oc get pods -n retailflow --field-selector=status.phase=Running | wc -l
+# Expected: 11 or more running pods
+----
+
+== Architecture
+
+----
+Internet
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────┐
+│ OpenShift Router (edge TLS termination)                     │
+└─────────────────────┬───────────────────────────────────────┘
+                      │ HTTPS → HTTP
+                      ▼
+┌─────────────────────────────────────────────────────────────┐
+│ Namespace: istio-ingress                                    │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  Gateway API (cloudhop-gateway)                      │  │
+│  │  istio-ingressgateway pod  [Envoy]                   │  │
+│  └──────────────────────┬───────────────────────────────┘  │
+└─────────────────────────┼───────────────────────────────────┘
+                          │ HTTPRoute → frontend:3000
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│ Namespace: retailflow  (mTLS STRICT, sidecar injected)      │
+│                                                             │
+│  [frontend]──────► [api-gateway]                            │
+│                         │                                   │
+│             ┌───────────┼────────────────┐                  │
+│             ▼           ▼                ▼                  │
+│         [orders]    [catalog]    [recommendations]          │
+│             │           │                                   │
+│             ▼           ▼                                   │
+│        [payments]  [postgresql]                             │
+│        v1 (90%)                                             │
+│        v2 (10%)                                             │
+│                                                             │
+│  Every arrow = mTLS-encrypted, Envoy-proxied connection     │
+└─────────────────────────────────────────────────────────────┘
+----
+
+== Quick Start — Apply Everything at Once
+
+To deploy all mesh resources in a single command:
+
+[tabs]
+====
+CRC::
++
+--
+[source,bash]
+----
+oc apply -k workshops/01-service-mesh/deploy/overlays/crc
+----
+--
+External cluster::
++
+--
+[source,bash]
+----
+oc apply -k workshops/01-service-mesh/deploy/overlays/demo-platform
+----
+--
+====
+
+Then follow the verification steps in each scenario to understand what was deployed.
+
+== Scenarios
+
+[cols="1,3,1",options="header"]
+|===
+| Scenario | Description | Time
+| xref:01-mesh-entry.adoc[1 — Mesh Entry & mTLS] | Install control plane, inject sidecars, verify mTLS | 10 min
+| xref:02-ingress-gateway.adoc[2 — Ingress Gateway] | Gateway API + OpenShift Route for external traffic | 10 min
+| xref:03-canary.adoc[3 — Canary Release] | 90/10 traffic split between payments v1 and v2 | 10 min
+| xref:04-circuit-breaker.adoc[4 — Circuit Breaker] | Outlier detection and retries for catalog failures | 15 min
+| xref:05-authz-policy.adoc[5 — Authorization Policy] | Zero-trust: only `orders` may call `payments` | 10 min
+|===

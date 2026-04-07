@@ -1,0 +1,17 @@
+site:
+  title: Adoption Blueprints Lab
+  url: https://rdiazgav.github.io/adoption-blueprints-lab
+  start_page: adoption-blueprints-lab::index.adoc
+
+content:
+  sources:
+    - url: .
+      start_path: docs
+
+ui:
+  bundle:
+    url: https://gitlab.com/antora/antora-ui-default/-/jobs/artifacts/HEAD/raw/build/ui-bundle.zip
+    snapshot: true
+
+output:
+  dir: docs-site

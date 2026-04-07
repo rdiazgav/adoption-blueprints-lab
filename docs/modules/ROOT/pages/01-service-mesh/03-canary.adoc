@@ -1,0 +1,116 @@
+= Scenario 3 — Canary Release: Payments v1/v2 with 90/10 Split
+:navtitle: Canary Release
+
+Estimated time: *10 minutes*
+
+== What you will learn
+
+* How Istio `DestinationRule` subsets map to different versions of the same service
+* How `VirtualService` weights enforce a traffic split independent of the number of replicas
+* How to verify the split by counting responses from each version
+* How to adjust the split at runtime without redeploying
+
+== The Problem It Solves
+
+RetailFlow is releasing payments v2, which includes a new fraud detection algorithm.
+Deploying it to 100% of users immediately is risky — if there is a bug in the payment flow, every transaction fails.
+A canary lets the team validate v2 with 10% of real bookings before committing to a full rollout.
+
+== How It Works
+
+Two Deployments exist: `payments-v1` and `payments-v2`.
+They share a single `payments` Kubernetes Service.
+Without a mesh, the Service would load-balance 50/50.
+With the mesh:
+
+* A `DestinationRule` defines two subsets: `v1` (label `app.kubernetes.io/version: v1`) and `v2` (label `app.kubernetes.io/version: v2`)
+* A `VirtualService` routes 90% of traffic to `v1` and 10% to `v2`
+
+Envoy enforces the weights at the client proxy side, before the request leaves the calling pod.
+
+== Verify the Resources
+
+[source,bash]
+----
+oc get destinationrule payments -n retailflow
+oc get virtualservice payments -n retailflow
+----
+
+Check the current weights:
+
+[source,bash]
+----
+oc get virtualservice payments -n retailflow \
+  -o jsonpath='{.spec.http[0].route[*].weight}'
+----
+
+.Expected output
+----
+90 10
+----
+
+== Test the Traffic Split
+
+Generate 50 payment requests and count how many hit each version:
+
+[source,bash]
+----
+oc port-forward deployment/api-gateway 8080:8080 -n retailflow &
+PF_PID=$!
+sleep 2
+
+V1=0; V2=0
+for i in $(seq 1 50); do
+  RESP=$(curl -s -X POST http://localhost:8080/api/payments \
+    -H "Content-Type: application/json" \
+    -d '{"orderId":1,"amount":99.99,"currency":"USD"}')
+  if echo "$RESP" | grep -q '"version":"v2"'; then
+    V2=$((V2 + 1))
+  else
+    V1=$((V1 + 1))
+  fi
+done
+
+kill $PF_PID 2>/dev/null
+echo "v1: $V1 / v2: $V2 (out of 50)"
+----
+
+.Expected output (approximate — weights are probabilistic)
+----
+v1: 44 / v2: 6 (out of 50)
+----
+
+[NOTE]
+====
+The split is probabilistic.
+With 50 requests you may see anywhere from 3 to 9 hitting v2.
+With 500 requests the ratio will converge closer to 90/10.
+====
+
+== Adjust the Split at Runtime
+
+To shift to a 50/50 split without redeploying:
+
+[source,bash]
+----
+oc patch virtualservice payments -n retailflow \
+  --type=json \
+  -p='[{"op":"replace","path":"/spec/http/0/route/0/weight","value":50},
+       {"op":"replace","path":"/spec/http/0/route/1/weight","value":50}]'
+----
+
+[TIP]
+====
+To fully promote v2 (100% traffic), set `v1` weight to `0` and `v2` weight to `100`.
+Then decommission the `payments-v1` Deployment and delete the `DestinationRule` and `VirtualService`.
+====
+
+== What to Look For in Kiali
+
+. In the Graph view, the `payments` node expands to show `payments v1` and `payments v2`
+. Edge labels show the approximate split: roughly 9 requests to v1 for every 1 to v2
+. Both versions show a green health indicator
+
+== Next Step
+
+xref:04-circuit-breaker.adoc[Scenario 4 — Circuit Breaker]

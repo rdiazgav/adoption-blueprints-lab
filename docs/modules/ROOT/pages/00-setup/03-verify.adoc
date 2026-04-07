@@ -1,0 +1,205 @@
+= Verify the Deployment
+:navtitle: Verify
+
+== What you will learn
+
+* How to confirm all RetailFlow pods are running and healthy
+* How to verify services, PVCs, and the frontend route
+* How to run the smoke test to validate end-to-end connectivity
+
+== Step 1 — Wait for Pods
+
+[source,bash]
+----
+oc get pods -n retailflow -w
+----
+
+.Expected output (after 3–5 minutes on CRC)
+----
+NAME                                  READY   STATUS    RESTARTS   AGE
+api-gateway-7d9f8b6c4-xk2pn           1/1     Running   0          4m12s
+catalog-6c8d9f7b5-m9rvt               1/1     Running   0          4m10s
+frontend-5b7c6d8f9-p4wzq              1/1     Running   0          4m11s
+orders-8f6b5c7d4-t7jkn                1/1     Running   0          4m09s
+payments-v1-9d7c8b6f5-h3mnp           1/1     Running   0          4m08s
+payments-v2-4f8c7d9b6-r6lqx           1/1     Running   0          4m07s
+postgresql-catalog-7b9c8d6f5-w2vks    1/1     Running   0          4m15s
+postgresql-orders-6d8f7c9b4-n8ptr     1/1     Running   0          4m14s
+postgresql-payments-5c9b8d7f6-k5wjm   1/1     Running   0          4m13s
+recommendations-8c6d7f9b5-q9xtn       1/1     Running   0          4m06s
+redis-7f9c8b6d5-v4zrp                 1/1     Running   0          4m16s
+----
+
+[NOTE]
+====
+* `READY` must show `1/1` for every pod — this means the container is up and the readiness probe is passing.
+* `STATUS` must be `Running` for all pods.
+* `RESTARTS` should be `0` or very low — more than 3 restarts indicates a crash loop.
+====
+
+.Common issues
+[cols="2,2,3",options="header"]
+|===
+| Symptom | Cause | Fix
+| PVC stays `Pending` | No storage provisioner | On CRC, verify the `crc-csi-hostpath-provisioner` StorageClass exists: `oc get sc`
+| Pod stuck in `Init:0/1` | Init container waiting for DB | The PostgreSQL pod may still be starting — wait and retry
+| Pod in `CrashLoopBackOff` | Application error on startup | Check logs: `oc logs <pod-name> -n retailflow --previous`
+|===
+
+== Step 2 — Verify Services
+
+[source,bash]
+----
+oc get svc -n retailflow
+----
+
+.Expected output
+----
+NAME                  TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)    AGE
+api-gateway           ClusterIP   172.30.45.12     <none>        8080/TCP   5m
+catalog               ClusterIP   172.30.112.88    <none>        8080/TCP   5m
+frontend              ClusterIP   172.30.67.203    <none>        3000/TCP   5m
+orders                ClusterIP   172.30.189.44    <none>        8080/TCP   5m
+payments              ClusterIP   172.30.23.156    <none>        8080/TCP   5m
+postgresql-catalog    ClusterIP   172.30.98.71     <none>        5432/TCP   5m
+postgresql-orders     ClusterIP   172.30.145.33    <none>        5432/TCP   5m
+postgresql-payments   ClusterIP   172.30.77.249    <none>        5432/TCP   5m
+recommendations       ClusterIP   172.30.201.18    <none>        8000/TCP   5m
+redis                 ClusterIP   172.30.134.62    <none>        6379/TCP   5m
+----
+
+[NOTE]
+====
+* All services must have a `CLUSTER-IP` assigned.
+* Port numbers: Quarkus services on `8080`, recommendations on `8000`, Redis on `6379`.
+====
+
+== Step 3 — Verify PVCs (CRC only)
+
+[source,bash]
+----
+oc get pvc -n retailflow
+----
+
+.Expected output
+----
+NAME                      STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS                     AGE
+postgresql-catalog-pvc    Bound    pvc-3a7f2b1c-...   1Gi   RWO   crc-csi-hostpath-provisioner   5m
+postgresql-orders-pvc     Bound    pvc-7b2c1d4e-...   1Gi   RWO   crc-csi-hostpath-provisioner   5m
+postgresql-payments-pvc   Bound    pvc-1c4d5e6f-...   1Gi   RWO   crc-csi-hostpath-provisioner   5m
+----
+
+[WARNING]
+====
+`STATUS` must be `Bound`. A `Pending` PVC means no PersistentVolume could be provisioned — the PostgreSQL pods will not start.
+====
+
+== Step 4 — Access the Frontend
+
+[source,bash]
+----
+oc get route frontend -n retailflow -o jsonpath='{.spec.host}'
+----
+
+.Expected output
+----
+frontend-retailflow.apps-crc.testing
+----
+
+Open `https://frontend-retailflow.apps-crc.testing` in your browser.
+You should see the RetailFlow storefront.
+
+== Step 5 — Run the Smoke Test
+
+[source,bash]
+----
+./scripts/smoke-test.sh
+----
+
+.Expected output
+----
+RetailFlow smoke test
+=====================
+Cluster: https://api.crc.testing:6443
+Namespace: retailflow
+
+[OK] frontend           https://frontend-retailflow.apps-crc.testing         HTTP 200
+[OK] api-gateway health http://api-gateway.retailflow.svc:8080/q/health/live  HTTP 200
+[OK] orders health      http://orders.retailflow.svc:8080/q/health/live       HTTP 200
+[OK] catalog health     http://catalog.retailflow.svc:8080/q/health/live      HTTP 200
+[OK] payments health    http://payments.retailflow.svc:8080/q/health/live     HTTP 200
+[OK] recommendations    http://recommendations.retailflow.svc:8000/health     HTTP 200
+
+All services healthy.
+----
+
+[NOTE]
+====
+Every line must show `[OK]` and `HTTP 200`.
+A `[FAIL]` on any line means that service is not responding — check its pod logs.
+====
+
+.Common issues
+[cols="2,2,3",options="header"]
+|===
+| Symptom | Cause | Fix
+| `[FAIL] catalog — HTTP 000` | Pod not yet ready | Wait 30 seconds and re-run
+| `[FAIL] catalog — HTTP 500` | Database connection failed | Check PostgreSQL pod: `oc logs postgresql-catalog-xxx -n retailflow`
+| `[FAIL] recommendations — HTTP 503` | Python service crashed | Check logs: `oc logs recommendations-xxx -n retailflow`
+| `curl: (6) Could not resolve host` | DNS not resolving inside cluster | Verify CoreDNS pods are running: `oc get pods -n openshift-dns`
+|===
+
+== Troubleshooting
+
+=== Pods stuck in `Pending`
+
+Usually a resource constraint on CRC. Check node pressure:
+
+[source,bash]
+----
+oc describe node crc-l7br4-master-0 | grep -A5 "Conditions:"
+oc describe node crc-l7br4-master-0 | grep -A10 "Allocated resources:"
+----
+
+[TIP]
+====
+If memory is the bottleneck, verify your CRC config has at least 16384 MB and restart:
+
+[source,bash]
+----
+crc config get memory
+crc stop && crc start
+----
+====
+
+=== Pods in `CrashLoopBackOff`
+
+[source,bash]
+----
+oc get pods -n retailflow
+oc logs <pod-name> -n retailflow --previous
+----
+
+=== ImagePullBackOff
+
+[source,bash]
+----
+oc get secret pull-secret -n retailflow
+----
+
+If missing, create it:
+
+[source,bash]
+----
+oc create secret docker-registry pull-secret \
+  --docker-server=quay.io \
+  --docker-username=<your-username> \
+  --docker-password=<your-password> \
+  -n retailflow
+
+oc secrets link default pull-secret --for=pull -n retailflow
+----
+
+== Next Step
+
+Your environment is ready. Continue with xref:../01-service-mesh/index.adoc[Workshop 01 — Service Mesh].

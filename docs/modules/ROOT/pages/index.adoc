@@ -1,0 +1,49 @@
+= Adoption Blueprints Lab
+:page-layout: home
+
+A modular workshop platform built around *RetailFlow*, a reference e-commerce application that demonstrates Red Hat OpenShift adoption across multiple technology areas.
+
+Each workshop is self-contained and targets a specific Red Hat technology.
+The application code never changes between workshops — only the platform layer on top of it does.
+
+== Reference Application: RetailFlow
+
+[cols="1,1,2",options="header"]
+|===
+| Service | Language | Description
+| `api-gateway` | Quarkus 3.8 JVM | Entry point, routing, auth token validation
+| `orders` | Quarkus 3.8 JVM | Order lifecycle (create, read, update status)
+| `catalog` | Quarkus 3.8 JVM | Product catalog (list, search, detail)
+| `payments` | Quarkus 3.8 JVM | Payment processing — two versions (v1, v2) for canary scenarios
+| `recommendations` | Python 3.11 / FastAPI | Product recommendations
+| `frontend` | Node.js / React | Customer-facing storefront
+|===
+
+== Workshops
+
+[cols="1,3,1",options="header"]
+|===
+| Workshop | Topic | Status
+| xref:00-setup/index.adoc[00 — Setup] | Deploy RetailFlow, verify the base platform | Available
+| xref:01-service-mesh/index.adoc[01 — Service Mesh] | OSSM 3.x, Gateway API, mTLS, canary, circuit breaker, AuthorizationPolicy | Available
+| 02 — Observability | OpenTelemetry, Tempo, Loki, Prometheus, Grafana | Coming soon
+| 03 — Pipelines | Tekton / OpenShift Pipelines | Coming soon
+| 04 — GitOps | Argo CD / OpenShift GitOps | Coming soon
+| 05 — Keycloak | Keycloak / RH SSO, OIDC, JWT | Coming soon
+| 06 — Quay | Quay registry, image scanning, mirroring | Coming soon
+| 07 — ACS | ACS / StackRox, runtime security, CVE policies | Coming soon
+| 08 — ACM | ACM, multi-cluster, governance policies | Coming soon
+| 09 — Developer Hub | Red Hat Developer Hub, Backstage, golden paths | Coming soon
+| 10 — OpenShift AI | OpenShift AI, model serving | Coming soon
+|===
+
+== Target Environment
+
+* *Primary*: Red Hat OpenShift Local (CRC) with 16 GB RAM, 6 CPUs, 100 GB disk
+* *Secondary*: Any OpenShift 4.14+ cluster with cluster-admin permissions
+* *Tooling*: Podman for local builds, Quay for image registry, Kustomize for manifests
+
+== Getting Started
+
+Start with xref:00-setup/index.adoc[Workshop 00 — Platform Setup].
+It deploys RetailFlow and is a prerequisite for all other workshops.

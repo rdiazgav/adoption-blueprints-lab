@@ -1,0 +1,157 @@
+= Scenario 5 — AuthorizationPolicy: Zero-Trust Between Services
+:navtitle: Authorization Policy
+
+Estimated time: *10 minutes*
+
+== What you will learn
+
+* How Istio uses SPIFFE X.509 certificates to give every pod a cryptographically verified identity
+* How `AuthorizationPolicy` uses those identities to enforce service-level access control
+* How to verify that an authorized caller succeeds and an unauthorized caller is rejected
+* Why this is stronger than network-level firewall rules
+
+== The Problem It Solves
+
+By default, with mTLS enabled, any pod in the mesh can call any other pod.
+If the `recommendations` service is compromised through a dependency vulnerability, an attacker could use it to POST requests directly to the `payments` service and initiate fraudulent transactions.
+There is nothing in the network that would stop it — both pods are in the same namespace.
+
+An `AuthorizationPolicy` closes this gap: only the `orders` service is permitted to call `payments`.
+Any other caller receives an immediate `403 RBAC: access denied`.
+
+== How It Works
+
+The policy selects pods with `app.kubernetes.io/name: payments` and defines a single ALLOW rule:
+
+* *From*: source principal `cluster.local/ns/retailflow/sa/orders` (the `orders` ServiceAccount, verified via mTLS certificate)
+* *To*: HTTP methods `POST` and `GET`
+
+This works because:
+
+. Each RetailFlow Deployment has a dedicated ServiceAccount (`orders`, `catalog`, etc.)
+. Istio's CA issues an X.509 certificate with a SPIFFE URI encoding the ServiceAccount
+. Envoy validates that URI before forwarding the request
+
+[NOTE]
+====
+This is stronger than IP-based firewall rules.
+IP addresses can be spoofed or change when pods reschedule.
+A SPIFFE identity is cryptographically bound to the workload's ServiceAccount and cannot be forged.
+====
+
+== Verify the Policy Exists
+
+[source,bash]
+----
+oc get authorizationpolicy payments-allow-orders-only -n retailflow
+----
+
+== Test: Authorized Caller (orders → payments)
+
+[source,bash]
+----
+ORDERS_POD=$(oc get pod -n retailflow \
+  -l app.kubernetes.io/name=orders \
+  --field-selector=status.phase=Running \
+  -o jsonpath='{.items[0].metadata.name}')
+
+oc exec "$ORDERS_POD" -c orders -n retailflow -- \
+  curl -s -o /dev/null -w "%{http_code}" \
+  -X POST http://payments:8080/payments \
+  -H "Content-Type: application/json" \
+  -d '{"orderId":1,"amount":99.99}'
+----
+
+.Expected output
+----
+200
+----
+
+[NOTE]
+====
+The response may also be `400` if the payments service validates the payload and the test data is incomplete.
+Either `200` or `400` means the request *reached* the payments application — it was not blocked by Envoy.
+====
+
+== Test: Unauthorized Caller (catalog → payments)
+
+[source,bash]
+----
+CATALOG_POD=$(oc get pod -n retailflow \
+  -l app.kubernetes.io/name=catalog \
+  --field-selector=status.phase=Running \
+  -o jsonpath='{.items[0].metadata.name}')
+
+oc exec "$CATALOG_POD" -c catalog -n retailflow -- \
+  curl -s -o /dev/null -w "%{http_code}" \
+  -X POST http://payments:8080/payments \
+  -H "Content-Type: application/json" \
+  -d '{"orderId":1,"amount":99.99}'
+----
+
+.Expected output
+----
+403
+----
+
+[WARNING]
+====
+If the catalog call returns `200` instead of `403`, the `AuthorizationPolicy` is not active.
+
+Check that sidecars are `2/2` (mTLS must be working before authorization can be evaluated):
+
+[source,bash]
+----
+oc get pods -n retailflow
+----
+
+If sidecars are correct but the policy is not enforced, delete and reapply the `AuthorizationPolicy`:
+
+[source,bash]
+----
+oc delete authorizationpolicy payments-allow-orders-only -n retailflow
+oc apply -k workshops/01-service-mesh/deploy/overlays/crc
+----
+====
+
+== What to Look For in Kiali
+
+* The edge from `orders` → `payments` shows normal traffic (green)
+* If you generate a request from the catalog pod, Kiali shows a `403` error on that edge (red)
+
+== Cleanup
+
+To remove all mesh resources while keeping RetailFlow running:
+
+[source,bash]
+----
+# Remove traffic policies
+oc delete -k workshops/01-service-mesh/deploy/base/03-traffic/
+
+# Remove control plane and namespaces
+oc delete -k workshops/01-service-mesh/deploy/base/01-control-plane/
+
+# Remove namespace mesh labels
+oc label namespace retailflow istio-injection- istio-discovery-
+
+# Restart pods to remove sidecars
+oc rollout restart deployment -n retailflow
+----
+
+To remove the operators:
+
+[source,bash]
+----
+oc delete subscription sailoperator kiali-ossm -n openshift-operators
+oc delete csv -l operators.coreos.com/sailoperator.openshift-operators \
+  -n openshift-operators
+oc delete csv -l operators.coreos.com/kiali-ossm.openshift-operators \
+  -n openshift-operators
+----
+
+== Workshop Complete
+
+You have completed Workshop 01.
+All five service mesh scenarios have been applied and verified.
+
+Return to the xref:index.adoc[Workshop 01 Overview] or continue with the next workshop from the xref:../index.adoc[home page].

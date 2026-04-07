@@ -1,0 +1,61 @@
+= Workshop 00 — Platform Setup
+:navtitle: Overview
+
+This workshop prepares your environment and deploys the RetailFlow base application.
+It is a *prerequisite for all other workshops*.
+
+Estimated time: *30–45 minutes*
+
+== What you will learn
+
+* How to configure and verify Red Hat OpenShift Local (CRC)
+* How to connect to an OpenShift cluster using the `oc` CLI
+* How to deploy a multi-service application with Kustomize
+* How to verify that all services are healthy using pod status, service endpoints, and a smoke test
+
+== Steps
+
+[cols="1,4",options="header"]
+|===
+| Step | Description
+| xref:01-prerequisites.adoc[1 — Prerequisites] | Configure CRC or verify access to an external cluster
+| xref:02-deploy.adoc[2 — Deploy RetailFlow] | Create the `retailflow` namespace and apply Kustomize overlays
+| xref:03-verify.adoc[3 — Verify] | Confirm all pods are running, services are reachable, and the smoke test passes
+|===
+
+== Architecture
+
+RetailFlow is a simplified e-commerce platform consisting of six services:
+
+----
+                        ┌──────────┐
+          Browser ──►   │ frontend │
+                        └────┬─────┘
+                             │
+                        ┌────▼──────┐
+                        │api-gateway│
+                        └─┬──┬───┬──┘
+                          │  │   │
+               ┌──────────┘  │   └──────────────────┐
+               ▼             ▼                       ▼
+          ┌────────┐    ┌─────────┐    ┌──────────────────────┐
+          │ orders │    │ catalog │    │    recommendations   │
+          └───┬────┘    └────┬────┘    └──────────────────────┘
+              │              │
+        ┌─────▼────┐  ┌──────▼──────────┐
+        │ payments │  │ postgresql-catalog│
+        │  v1 / v2 │  └─────────────────┘
+        └──────────┘
+----
+
+[NOTE]
+====
+The payments service is deployed in two versions (`v1` and `v2`) to support canary release scenarios in Workshop 01.
+====
+
+== What's next?
+
+After completing this workshop, choose your next topic:
+
+* xref:../01-service-mesh/index.adoc[Workshop 01 — Service Mesh]: traffic management, mTLS, ingress
+* Observability, Pipelines, GitOps, and more — see the xref:../index.adoc[full workshop list]

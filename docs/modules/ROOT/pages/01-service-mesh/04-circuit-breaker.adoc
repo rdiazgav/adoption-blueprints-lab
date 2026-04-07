@@ -1,0 +1,142 @@
+= Scenario 4 — Circuit Breaker: Catalog Failure Isolation
+:navtitle: Circuit Breaker
+
+Estimated time: *15 minutes*
+
+== What you will learn
+
+* How `outlierDetection` in a `DestinationRule` ejects unhealthy hosts from the load-balancing pool
+* How a `VirtualService` timeout prevents calls from blocking indefinitely
+* How to trigger the circuit breaker using a chaos endpoint
+* How to observe the error rate spike and automatic recovery in Kiali
+
+== The Problem It Solves
+
+The catalog is the most-called service in RetailFlow: every page load, every search, every recommendation refresh hits it.
+If the catalog pod starts returning 503 errors, without a circuit breaker those errors cascade: the api-gateway queues requests, threads block waiting for responses, and within minutes the api-gateway becomes unresponsive — taking down orders and payments even though their pods are perfectly healthy.
+
+== How It Works
+
+The `catalog` `DestinationRule` is configured with `outlierDetection`:
+
+* After *3 consecutive 5xx or gateway errors*, the catalog host is ejected from the pool
+* It stays ejected for *30 seconds* (`baseEjectionTime`)
+* Up to *100% of hosts* can be ejected (`maxEjectionPercent: 100`)
+
+The `catalog` `VirtualService` adds:
+
+* A *3-second timeout* on all catalog calls
+* *2 retry attempts* on `gateway-error`, `connect-failure`, or `retriable-4xx`
+
+The catalog service has a `/chaos` toggle endpoint that makes it return 503 without killing the pod, so Envoy sees real HTTP errors and triggers the ejection.
+
+== Verify the Resources
+
+[source,bash]
+----
+oc get destinationrule catalog -n retailflow \
+  -o jsonpath='{.spec.trafficPolicy.outlierDetection}'
+----
+
+[source,bash]
+----
+oc get virtualservice catalog -n retailflow \
+  -o jsonpath='{.spec.http[0].timeout}'
+----
+
+.Expected output
+----
+3s
+----
+
+== Run the Chaos Scenario
+
+Enable chaos mode on the catalog:
+
+[source,bash]
+----
+./scripts/chaos/break-catalog.sh
+----
+
+While chaos is active, send requests and observe the circuit opening:
+
+[source,bash]
+----
+oc port-forward deployment/api-gateway 8080:8080 -n retailflow &
+PF_PID=$!
+sleep 2
+
+for i in $(seq 1 15); do
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+    http://localhost:8080/api/products)
+  echo "Request $i: HTTP $STATUS"
+  sleep 1
+done
+
+kill $PF_PID 2>/dev/null
+----
+
+.Expected output during chaos (circuit open)
+----
+Request 1: HTTP 503
+Request 2: HTTP 503
+Request 3: HTTP 503
+Request 4: HTTP 503
+...
+----
+
+[NOTE]
+====
+Envoy returns `503` immediately — before the request reaches the catalog pod.
+The circuit is open: the host has been ejected from the pool.
+====
+
+After the 30-second `baseEjectionTime` elapses, the host is readmitted:
+
+.Expected output after recovery
+----
+Request 12: HTTP 200
+Request 13: HTTP 200
+Request 14: HTTP 200
+----
+
+== Restore Manually
+
+To restore catalog without waiting for the ejection timer:
+
+[source,bash]
+----
+./scripts/chaos/restore-catalog.sh
+----
+
+== What to Look For in Kiali
+
+During chaos:
+
+* The `catalog` node turns *red or orange*
+* Edge labels show a high error percentage (e.g. `503 100%`)
+* The `catalog` service sidebar shows an outlier ejection event
+
+After recovery:
+
+* The node returns to green
+* Error rate drops to 0%
+* Traffic resumes normally
+
+== What to Look For in the Cluster
+
+[source,bash]
+----
+# Ejection events are logged by Envoy — check the sidecar logs of the api-gateway
+oc logs deployment/api-gateway -c istio-proxy -n retailflow --tail=20
+----
+
+[TIP]
+====
+Look for `outlier_detection` in the Envoy access logs.
+The log entry will include the upstream host that was ejected and the reason.
+====
+
+== Next Step
+
+xref:05-authz-policy.adoc[Scenario 5 — Authorization Policy]

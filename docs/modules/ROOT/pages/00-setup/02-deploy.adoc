@@ -1,0 +1,122 @@
+= Deploy RetailFlow
+:navtitle: Deploy RetailFlow
+
+== What you will learn
+
+* How to create the `retailflow` namespace
+* How to apply Kustomize overlays for CRC and external clusters
+* What resources are created and what to look for in the output
+
+== Step 1 — Create the RetailFlow Namespace
+
+[source,bash]
+----
+oc new-project retailflow
+----
+
+Verify the project was created:
+
+[source,bash]
+----
+oc project
+----
+
+.Expected output
+----
+Now using project "retailflow" on server "https://api.crc.testing:6443".
+----
+
+[WARNING]
+====
+The project name must be exactly `retailflow`.
+All workshop manifests hard-code this namespace.
+====
+
+.Common issues
+[cols="2,2,3",options="header"]
+|===
+| Symptom | Cause | Fix
+| `project "retailflow" already exists` | Namespace exists from a previous run | Run `oc project retailflow` to switch into it, or `oc delete project retailflow` to start fresh
+| `forbidden: unable to create project` | Insufficient permissions | Ask your cluster admin to create the namespace or grant you `self-provisioner`
+|===
+
+== Step 2 — Clone the Repository
+
+[source,bash]
+----
+git clone https://github.com/rdiazgav/adoption-blueprints-lab.git
+cd adoption-blueprints-lab
+----
+
+== Step 3 — Apply the Kustomize Overlay
+
+[tabs]
+====
+CRC::
++
+--
+[source,bash]
+----
+oc apply -k deploy/overlays/crc
+----
+--
+External cluster::
++
+--
+[source,bash]
+----
+oc apply -k deploy/overlays/demo-platform
+----
+--
+====
+
+.Expected output (CRC)
+----
+namespace/retailflow configured
+configmap/retailflow-config created
+serviceaccount/retailflow created
+service/api-gateway created
+service/catalog created
+service/frontend created
+service/orders created
+service/payments created
+service/postgresql-catalog created
+service/postgresql-orders created
+service/postgresql-payments created
+service/recommendations created
+service/redis created
+deployment.apps/api-gateway created
+deployment.apps/catalog created
+deployment.apps/frontend created
+deployment.apps/orders created
+deployment.apps/payments-v1 created
+deployment.apps/payments-v2 created
+deployment.apps/postgresql-catalog created
+deployment.apps/postgresql-orders created
+deployment.apps/postgresql-payments created
+deployment.apps/recommendations created
+deployment.apps/redis created
+persistentvolumeclaim/postgresql-catalog-pvc created
+persistentvolumeclaim/postgresql-orders-pvc created
+persistentvolumeclaim/postgresql-payments-pvc created
+route.route.openshift.io/frontend created
+----
+
+[NOTE]
+====
+Every resource should show `created` or `configured` — not `error`.
+All three PVCs are listed in the CRC overlay (persistent storage is included).
+====
+
+.Common issues
+[cols="2,2,3",options="header"]
+|===
+| Symptom | Cause | Fix
+| `no matches for kind "Route"` | Not on OpenShift | Use `deploy/overlays/demo-platform` which uses Ingress instead
+| `unable to recognize "...": no matches for kind` | CRD not installed | The operator for that resource is missing — check operator prerequisites
+| `error: kustomize build failed` | Kustomize version mismatch | Use `oc apply -k` (built-in), not standalone `kustomize`
+|===
+
+== Next Step
+
+xref:03-verify.adoc[Step 3 — Verify the Deployment]

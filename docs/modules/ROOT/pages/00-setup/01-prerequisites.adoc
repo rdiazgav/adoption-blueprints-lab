@@ -1,0 +1,125 @@
+= Prerequisites
+:navtitle: Prerequisites
+
+Before deploying RetailFlow, verify that your environment meets the minimum requirements.
+
+== What you will learn
+
+* How to configure and start Red Hat OpenShift Local (CRC)
+* What the minimum cluster requirements are for an external OpenShift cluster
+* How to verify your cluster is healthy before proceeding
+
+== Option A — Red Hat OpenShift Local (CRC)
+
+[source,bash]
+----
+crc config set memory 16384
+crc config set cpus 6
+crc config set disk-size 100
+crc start
+----
+
+Verify CRC is running:
+
+[source,bash]
+----
+crc status
+----
+
+.Expected output
+----
+CRC VM:          Running
+OpenShift:       Running (v4.17.3)
+RAM Usage:       7.42 of 15.96 GB
+Disk Usage:      14.05 of 92.83 GB (Inside the CRC VM)
+Cache Usage:     35.7 GB
+Cache Directory: /Users/user/.crc/cache
+----
+
+[NOTE]
+====
+Both `CRC VM` and `OpenShift` must show `Running`.
+If RAM Usage is already above 14 GB before deploying anything, close other applications running on your host.
+====
+
+.Common issues
+[cols="2,2,3",options="header"]
+|===
+| Symptom | Cause | Fix
+| `OpenShift: Stopped` | CRC started but OpenShift did not come up | Run `crc stop && crc start`, check `crc logs`
+| `CRC VM: Starting` hangs | Insufficient disk or memory | Verify host has 20+ GB free RAM and 120+ GB disk
+| `hypervisor not found` | Virtualization driver missing | Install HyperKit (macOS) or libvirt (Linux)
+|===
+
+== Option B — External OpenShift Cluster
+
+You need:
+
+* OpenShift 4.14 or later
+* `cluster-admin` permissions
+* At least 3 worker nodes with 8 vCPU / 16 GB RAM each
+* A StorageClass with RWO support
+
+[source,bash]
+----
+oc login --token=<your-token> --server=https://<your-api-server>:6443
+----
+
+== Connect to Your Cluster
+
+// tabs::
+[tabs]
+====
+CRC::
++
+--
+[source,bash]
+----
+eval $(crc oc-env)
+oc login -u developer -p developer https://api.crc.testing:6443
+----
+--
+External cluster::
++
+--
+[source,bash]
+----
+oc login --token=<your-token> --server=https://<your-api-server>:6443
+----
+--
+====
+
+Verify access:
+
+[source,bash]
+----
+oc whoami
+oc get nodes
+----
+
+.Expected output (CRC)
+----
+developer
+NAME                 STATUS   ROLES                         AGE   VERSION
+crc-l7br4-master-0   Ready    control-plane,master,worker   18d   v1.30.4+6e0d669
+----
+
+[NOTE]
+====
+* `oc whoami` must return your username, not an error.
+* Node `STATUS` must be `Ready` — any other value means the cluster is not healthy.
+* On CRC, you will see a single node with `control-plane,master,worker` roles.
+====
+
+.Common issues
+[cols="2,2,3",options="header"]
+|===
+| Symptom | Cause | Fix
+| `error: dial tcp: connection refused` | CRC not fully started yet | Wait 2–3 minutes and retry
+| `The server uses a certificate signed by unknown authority` | Expired CRC cert | Run `crc stop && crc start`
+| `Unauthorized` | Wrong credentials | Use `-u kubeadmin` and the password from `crc console --credentials`
+|===
+
+== Next Step
+
+xref:02-deploy.adoc[Step 2 — Deploy RetailFlow]

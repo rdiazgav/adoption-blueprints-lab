@@ -1,0 +1,178 @@
+= Scenario 1 — Mesh Entry: Visibility and mTLS
+:navtitle: Mesh Entry & mTLS
+
+Estimated time: *10 minutes*
+
+== What you will learn
+
+* How the Sail Operator installs Istio on OpenShift
+* How sidecar injection adds an Envoy proxy to every pod automatically
+* How mTLS is enforced across all service-to-service traffic without application changes
+* How to verify injection and mTLS status using `oc` and Kiali
+
+== The Problem It Solves
+
+Without a mesh, service-to-service traffic is invisible.
+An operations team has no way to answer basic questions: which services call which others?
+How long do calls take? Are there errors? Is traffic encrypted in transit?
+They can only find out when a customer complains.
+
+== How It Works
+
+Every RetailFlow pod (api-gateway, catalog, orders, payments, recommendations, frontend) gets an Envoy sidecar injected at startup.
+The `retailflow` namespace is labelled `istio-injection: enabled`, and each Deployment has `sidecar.istio.io/inject: "true"` in its pod template for explicit control.
+
+Once injected, all calls between services are automatically encrypted with mTLS.
+Neither service needs to configure TLS — the proxies handle the certificate lifecycle using Istio's built-in CA.
+
+== Step 1 — Install the Mesh
+
+[source,bash]
+----
+oc apply -k workshops/01-service-mesh/deploy/overlays/crc
+----
+
+Wait for the operators to become ready:
+
+[source,bash]
+----
+oc wait --for=jsonpath='{.status.phase}'=Succeeded \
+  csv -l operators.coreos.com/sailoperator.openshift-operators \
+  -n openshift-operators --timeout=300s
+
+oc wait --for=jsonpath='{.status.phase}'=Succeeded \
+  csv -l operators.coreos.com/kiali-ossm.openshift-operators \
+  -n openshift-operators --timeout=300s
+----
+
+Wait for istiod:
+
+[source,bash]
+----
+oc wait --for=condition=Ready pod -l app=istiod \
+  -n istio-system --timeout=180s
+----
+
+[TIP]
+====
+If the operator CSV takes longer than 5 minutes to reach `Succeeded`, check the operator pod logs:
+
+[source,bash]
+----
+oc get pods -n openshift-operators
+oc logs -l name=sail-operator -n openshift-operators --tail=50
+----
+====
+
+== Step 2 — Inject Sidecars
+
+Restart the RetailFlow pods so the injection webhook can add the sidecar:
+
+[source,bash]
+----
+oc rollout restart deployment -n retailflow
+oc rollout status deployment/api-gateway -n retailflow
+----
+
+== Verify
+
+Check that all application pods now show two containers:
+
+[source,bash]
+----
+oc get pods -n retailflow
+----
+
+.Expected output
+----
+NAME                                     READY   STATUS    RESTARTS   AGE
+api-gateway-7d9f8b6c4-xk2pn              2/2     Running   0          4m
+catalog-6c8d9f7b5-m9rvt                  2/2     Running   0          4m
+frontend-5b7c6d8f9-p4wzq                 2/2     Running   0          4m
+orders-8f6b5c7d4-t7jkn                   2/2     Running   0          4m
+payments-v1-9d7c8b6f5-h3mnp              2/2     Running   0          4m
+payments-v2-4f8c7d9b6-r6lqx              2/2     Running   0          4m
+postgresql-catalog-7b9c8d6f5-w2vks       1/1     Running   0          4m
+postgresql-orders-6d8f7c9b4-n8ptr        1/1     Running   0          4m
+postgresql-payments-5c9b8d7f6-k5wjm      1/1     Running   0          4m
+recommendations-8c6d7f9b5-q9xtn          2/2     Running   0          4m
+redis-7f9c8b6d5-v4zrp                    1/1     Running   0          4m
+----
+
+Confirm the container names:
+
+[source,bash]
+----
+oc get pods -n retailflow \
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[*].name}{"\n"}{end}'
+----
+
+.Expected output
+----
+api-gateway-7d9f8b6c4-xk2pn      api-gateway istio-proxy
+catalog-6c8d9f7b5-m9rvt          catalog istio-proxy
+frontend-5b7c6d8f9-p4wzq         frontend istio-proxy
+orders-8f6b5c7d4-t7jkn           orders istio-proxy
+payments-v1-9d7c8b6f5-h3mnp      payments istio-proxy
+payments-v2-4f8c7d9b6-r6lqx      payments istio-proxy
+postgresql-catalog-7b9c8d6f5-w2vks  postgresql
+postgresql-orders-6d8f7c9b4-n8ptr   postgresql
+postgresql-payments-5c9b8d7f6-k5wjm postgresql
+recommendations-8c6d7f9b5-q9xtn  recommendations istio-proxy
+redis-7f9c8b6d5-v4zrp            redis
+----
+
+[NOTE]
+====
+* Application pods show `2/2` — the second container is `istio-proxy`.
+* PostgreSQL and Redis show `1/1` — they are excluded from injection (no mesh label on those pod templates).
+====
+
+Verify mTLS is in STRICT mode:
+
+[source,bash]
+----
+oc get peerauthentication -n retailflow
+----
+
+.Expected output
+----
+NAME      MODE     AGE
+default   STRICT   5m
+----
+
+== View in Kiali
+
+Generate traffic so the graph populates:
+
+[source,bash]
+----
+oc port-forward deployment/api-gateway 8080:8080 -n retailflow &
+PF_PID=$!
+sleep 2
+for i in $(seq 1 20); do
+  curl -s http://localhost:8080/api/products > /dev/null
+  curl -s http://localhost:8080/api/orders > /dev/null
+done
+kill $PF_PID 2>/dev/null
+----
+
+Open Kiali:
+
+[source,bash]
+----
+echo "https://$(oc get route kiali -n istio-system -o jsonpath='{.spec.host}')"
+----
+
+Navigate to *Graph* → select namespace `retailflow` → set time range to *Last 1m*.
+
+You should see:
+
+* All services as nodes connected by directed edges
+* *Lock icons* on edges — these indicate mTLS is active on that connection
+* Request rates (RPS) and error percentages on each edge
+* The full call graph: frontend → api-gateway → catalog/orders/recommendations → payments/databases
+
+== Next Step
+
+xref:02-ingress-gateway.adoc[Scenario 2 — Ingress Gateway]
