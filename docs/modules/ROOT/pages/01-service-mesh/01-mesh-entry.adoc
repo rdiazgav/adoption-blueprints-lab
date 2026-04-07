@@ -64,7 +64,21 @@ oc logs -l name=sail-operator -n openshift-operators --tail=50
 ----
 ====
 
-== Step 2 — Inject Sidecars
+== Step 2 — Wait for Mesh Components
+
+[source,bash]
+----
+./scripts/wait-for-mesh.sh
+----
+
+[NOTE]
+====
+The gateway pod is created at the same time as the control plane.
+If it starts before the Istio webhook is ready, it will fail to inject the proxy.
+This script waits for istiod, the `istio-sidecar-injector` MutatingWebhookConfiguration, and the `istio-cni-node` DaemonSet to all be ready before recreating the gateway pod so it picks up the sidecar correctly.
+====
+
+== Step 3 — Inject Sidecars
 
 Restart the RetailFlow pods so the injection webhook can add the sidecar:
 
