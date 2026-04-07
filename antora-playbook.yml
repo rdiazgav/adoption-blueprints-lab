@@ -10,7 +10,7 @@ content:
 
 ui:
   bundle:
-    url: https://github.com/antora/antora-ui-default/releases/download/latest/ui-bundle.zip
+    url: https://gitlab.com/antora/antora-ui-default/-/jobs/artifacts/v1.0.0/raw/build/ui-bundle.zip?job=bundle-stable
     snapshot: true
 
 output:
