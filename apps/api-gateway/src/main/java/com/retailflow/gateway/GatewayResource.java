@@ -102,7 +102,6 @@ public class GatewayResource {
 
         allUp &= probe("catalog",         services, () -> catalogClient.liveness());
         allUp &= probe("orders",          services, () -> ordersClient.liveness());
-        allUp &= probe("payments",        services, () -> paymentsClient.liveness());
         allUp &= probe("recommendations", services, () -> recommendationsClient.liveness());
 
         String overall = allUp ? "UP" : "DOWN";
