@@ -39,6 +39,16 @@ IP addresses can be spoofed or change when pods reschedule.
 A SPIFFE identity is cryptographically bound to the workload's ServiceAccount and cannot be forged.
 ====
 
+[NOTE]
+====
+The identity model used in this workshop — istiod acting as the internal CA
+issuing SPIFFE certificates to each ServiceAccount — is GA and
+production-supported in OSSM 3.x. Integration with SPIRE as an external CA
+(for organizations with an existing corporate PKI) is currently being tested
+and validated with OpenShift Service Mesh and is not yet GA.
+See the https://www.redhat.com/en/blog/openshift-service-mesh-33-adds-post-quantum-cryptography[OSSM 3.3 release blog] for more details.
+====
+
 == Verify the Policy Exists
 
 [source,bash]

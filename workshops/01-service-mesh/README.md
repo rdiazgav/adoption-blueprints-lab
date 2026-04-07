@@ -559,6 +559,13 @@ This works because:
 2. Istio's CA issues an X.509 certificate with a SPIFFE URI encoding the ServiceAccount
 3. Envoy validates that URI before forwarding the request
 
+> **Note:** The identity model used in this workshop — istiod acting as the
+> internal CA issuing SPIFFE certificates to each ServiceAccount — is GA and
+> production-supported in OSSM 3.x. Integration with SPIRE as an external CA
+> (for organizations with an existing corporate PKI) is currently being tested
+> and validated with OpenShift Service Mesh and is not yet GA.
+> See the [OSSM 3.3 release notes](https://www.redhat.com/en/blog/openshift-service-mesh-33-adds-post-quantum-cryptography) for more details.
+
 ### What you will see in Kiali
 
 - In the **Graph** view, the edge from `orders` → `payments` shows normal traffic
