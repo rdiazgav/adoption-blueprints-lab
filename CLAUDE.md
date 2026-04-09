@@ -23,6 +23,52 @@ A simplified e-commerce platform. Services:
 | `recommendations` | Python 3.11 / FastAPI | Product recommendations (mock data, no ML model) |
 | `frontend` | Node.js / React | Customer-facing storefront |
 
+## Build process per service
+
+Each service has a different build process depending on the stack:
+
+### Quarkus services (api-gateway, orders, catalog, payments)
+1. Compile locally with Maven wrapper:
+   `./mvnw package -DskipTests`
+2. Build container image with Podman (single-stage, copies pre-built jar):
+   `podman build --no-cache -t quay.io/rdiazgav/retailflow-<service>:<tag> .`
+3. Push to registry:
+   `podman push quay.io/rdiazgav/retailflow-<service>:<tag>`
+
+The Dockerfile copies from `target/quarkus-app/` — the jar must be compiled
+before building the image.
+
+### Python service (recommendations)
+1. No local compilation needed
+2. Build container image with Podman (pip install runs inside Dockerfile):
+   `podman build --no-cache -t quay.io/rdiazgav/retailflow-recommendations:<tag> .`
+3. Push to registry
+
+### Node.js service (frontend)
+1. No local compilation needed
+2. Build container image with Podman (npm install runs inside Dockerfile):
+   `podman build --no-cache -t quay.io/rdiazgav/retailflow-frontend:<tag> .`
+3. Push to registry
+
+## Image registry
+
+All images are hosted on quay.io under the rdiazgav organization:
+- `quay.io/rdiazgav/retailflow-api-gateway`
+- `quay.io/rdiazgav/retailflow-orders`
+- `quay.io/rdiazgav/retailflow-catalog`
+- `quay.io/rdiazgav/retailflow-payments`
+- `quay.io/rdiazgav/retailflow-recommendations`
+- `quay.io/rdiazgav/retailflow-frontend`
+
+## Current image tags (latest working versions)
+
+- api-gateway: 1.0.2
+- orders: 1.0.0
+- catalog: 1.1.0
+- payments: 1.0.0
+- recommendations: 1.0.1 (UBI9-based; ~1.17 GB is expected — intentional for OpenShift/ACS compatibility)
+- frontend: 1.0.5
+
 All Quarkus services use:
 - Quarkus 3.8 (JVM mode — not native, to keep build times short)
 - RESTEasy Reactive for REST endpoints
