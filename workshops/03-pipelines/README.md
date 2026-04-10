@@ -34,9 +34,11 @@ This creates (or skips if already present) the following public repositories:
 ## Prerequisites
 
 - **Workshop 00 completed** — RetailFlow deployed and all pods healthy in `retailflow`
-- `cluster-admin` permissions on OpenShift 4.14+ or CRC (>= 16 GB RAM)
+- **OpenShift Pipelines operator installed** — or `setup.sh` will install it (step 1/5)
+- `cluster-admin` permissions on OpenShift 4.14+ or CRC (≥ 16 GB RAM, 6 CPUs, 100 GB disk)
 - `oc` CLI configured and logged in
 - `tkn` CLI installed (`tkn version` should succeed)
+- Quay.io account with write access to `quay.io/<your-user>/retailflow-*`
 
 ---
 
@@ -145,6 +147,136 @@ bash scripts/setup.sh
 ```bash
 bash scripts/run-pipeline.sh catalog
 ```
+
+---
+
+## Running the Pipeline
+
+### Setup (one time)
+
+```bash
+cd workshops/03-pipelines
+
+# Optional: create Quay repos first
+export QUAY_USER=<your-quay-username>
+export QUAY_TOKEN=<your-quay-api-token>
+bash scripts/create-quay-repos.sh
+
+# Apply credentials, then run setup
+cp deploy/base/01-rbac/quay-credentials.yaml.template quay-credentials.yaml
+# Edit quay-credentials.yaml — paste your base64-encoded docker config
+oc apply -f quay-credentials.yaml -n retailflow
+bash scripts/setup.sh
+```
+
+After the operator reaches `Succeeded`, disable the affinity assistant (required for `volumeClaimTemplate` workspaces):
+
+```bash
+oc patch tektonconfig config --type merge \
+  -p '{"spec":{"pipeline":{"coschedule":"disabled"}}}'
+```
+
+### Run a pipeline
+
+```bash
+# Quarkus service (uses maven-build + buildah-rootless)
+bash scripts/run-pipeline.sh catalog
+
+# Python / Node.js service (buildah-rootless only)
+bash scripts/run-pipeline.sh recommendations
+bash scripts/run-pipeline.sh frontend
+
+# Watch logs
+tkn pipelinerun logs -f --last -n retailflow
+```
+
+---
+
+## Known Issues and Solutions (CRC)
+
+These issues were encountered and resolved during end-to-end validation on CRC.
+
+### 1 — Tekton Hub unreachable from cluster pods
+
+**Symptom:** `git-clone` step fails with connection timeout to `api.hub.tekton.dev`.
+
+**Solution:** `setup.sh` installs `git-clone` directly from `raw.githubusercontent.com`:
+```bash
+oc apply -f https://raw.githubusercontent.com/tektoncd/catalog/main/task/git-clone/0.9/git-clone.yaml -n retailflow
+```
+The `buildah` community task is replaced entirely by the custom `buildah-rootless` task in `03-tasks/`.
+
+---
+
+### 2 — PipelineRun stuck in `Pending` (coschedule / affinity assistant)
+
+**Symptom:** PipelineRun stays `Pending` indefinitely when using `volumeClaimTemplate` for the source workspace.
+
+**Root cause:** The Tekton affinity assistant requires all workspaces to share a single PVC when `coschedule` is enabled. `volumeClaimTemplate` creates per-PipelineRun PVCs, which breaks this assumption.
+
+**Solution:**
+```bash
+oc patch tektonconfig config --type merge \
+  -p '{"spec":{"pipeline":{"coschedule":"disabled"}}}'
+```
+This is idempotent and survives operator upgrades (unlike patching `feature-flags` ConfigMap directly, which the operator overwrites).
+
+---
+
+### 3 — Istio sidecar injected into Tekton TaskRun pods
+
+**Symptom:** TaskRun pods time out or fail with mTLS errors because the Istio sidecar intercepts Maven download and Buildah network traffic.
+
+**Solution (two layers):**
+
+1. Annotate `pipeline-sa` ServiceAccount (`deploy/base/01-rbac/serviceaccount.yaml`):
+   ```yaml
+   annotations:
+     sidecar.istio.io/inject: "false"
+   ```
+2. Set `taskRunTemplate.podTemplate` in every PipelineRun (`run-pipeline.sh`):
+   ```yaml
+   taskRunTemplate:
+     podTemplate:
+       metadata:
+         annotations:
+           sidecar.istio.io/inject: "false"
+   ```
+
+---
+
+### 4 — Maven wrapper fails to download Maven distribution
+
+**Symptom:** `./mvnw package` fails because `gzip` or `tar` is not available in `ubi9/openjdk-21`, or the SHA256 checksum does not match.
+
+**Root cause:** The `maven-wrapper.properties` pointed to a non-existent Maven version (3.9.12). The `mvnw` script tries to download a `.tar.gz` which requires system `gzip`.
+
+**Solution:**
+- `maven-wrapper.properties` now points to `apache-maven-3.9.9-bin.zip` from Maven Central — the Maven wrapper extracts `.zip` using Java's built-in `ZipInputStream`, no system tools needed.
+- `distributionSha256Sum` is removed to skip hash validation.
+- `maven-build` Task sets `MVNW_REPOURL=https://repo.maven.apache.org/maven2` to pin the download base URL.
+
+---
+
+### 5 — Buildah fails with permission or overlay errors
+
+**Symptom:** `buildah bud` fails with `permission denied`, `lchown`, or `overlay requires root` errors under restricted SCC.
+
+**Root cause:** The community `buildah` Tekton task runs with `privileged: true` and uses the `overlay` storage driver, which requires kernel capabilities not available in OpenShift's restricted SCC.
+
+**Solution:** Custom `buildah-rootless` task (`deploy/base/03-tasks/buildah-rootless.yaml`) using:
+
+| Setting | Value | Why |
+|---|---|---|
+| Image | `quay.io/buildah/stable:v1.35` | Better rootless support than `ubi9/buildah` |
+| `STORAGE_DRIVER` | `vfs` | No kernel overlay required; works with restricted SCC |
+| `BUILDAH_ISOLATION` | `chroot` | Avoids user namespaces; works without `SETFCAP` |
+| `CONTAINERS_STORAGE_CONF` | `/tmp/.config/containers/storage.conf` | Pins `ignore_chown_errors = "true"` at the storage layer |
+| `capabilities.drop` | `ALL` | No Linux capabilities needed |
+| `allowPrivilegeEscalation` | `false` | Compatible with restricted-v2 SCC |
+| `emptyDir` at `/var/lib/containers` | — | Writable container storage without host bind mounts |
+
+**SCC compatibility:** This configuration passes OpenShift's `restricted-v2` SCC and ACS (StackRox) image scanning policies without granting `anyuid` or `privileged` SCC to the pipeline service account.
 
 ---
 
