@@ -46,12 +46,15 @@ spec:
       emptyDir: {}
   steps:
     - name: build-and-push
-      image: registry.access.redhat.com/ubi9/buildah
+      image: quay.io/buildah/stable:v1.35
       securityContext:
         allowPrivilegeEscalation: false
+        runAsNonRoot: true
         capabilities:
           drop: [ALL]
       env:
+        - name: HOME
+          value: /tmp
         - name: STORAGE_DRIVER
           value: vfs
         - name: BUILDAH_ISOLATION
@@ -64,6 +67,10 @@ spec:
       script: |
         #!/usr/bin/env bash
         set -euo pipefail
+
+        mkdir -p /tmp/.config/containers
+        echo '[storage]' > /tmp/.config/containers/storage.conf
+        echo 'driver = "vfs"' >> /tmp/.config/containers/storage.conf
 
         buildah bud \
           --tls-verify=$(params.TLSVERIFY) \
