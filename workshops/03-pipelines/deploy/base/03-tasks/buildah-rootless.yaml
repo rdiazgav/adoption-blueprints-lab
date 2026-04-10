@@ -74,6 +74,8 @@ spec:
         echo 'driver = "vfs"' >> /tmp/.config/containers/storage.conf
 
         buildah bud \
+          --isolation=chroot \
+          --ignore-chown-errors \
           --tls-verify=$(params.TLSVERIFY) \
           --format=oci \
           -f $(params.DOCKERFILE) \
