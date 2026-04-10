@@ -35,20 +35,10 @@ spec:
         #!/usr/bin/env bash
         set -euo pipefail
 
-        microdnf install -y gzip tar --nodocs 2>/dev/null
-
-        MAVEN_VERSION=3.9.14
-        MAVEN_URL=https://archive.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz
-        MAVEN_HOME=/tmp/maven
-
-        if [ ! -f "$MAVEN_HOME/bin/mvn" ]; then
-          curl -fsSL "$MAVEN_URL" | tar -xz -C /tmp
-          mv /tmp/apache-maven-${MAVEN_VERSION} "$MAVEN_HOME"
-        fi
-
-        export PATH="$MAVEN_HOME/bin:$PATH"
-
         cd $(workspaces.source.path)/$(params.SERVICE_DIR)
-        mvn package \
-          -Dmaven.repo.local=$(workspaces.maven-cache.path)/.m2/repository \
+
+        export MAVEN_USER_HOME=$(workspaces.maven-cache.path)/.m2
+
+        ./mvnw package \
+          -Dmaven.repo.local=${MAVEN_USER_HOME}/repository \
           $(params.MAVEN_ARGS)
