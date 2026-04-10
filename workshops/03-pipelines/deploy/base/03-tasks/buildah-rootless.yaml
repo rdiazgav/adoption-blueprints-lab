@@ -45,7 +45,6 @@ spec:
     - name: build-and-push
       image: registry.access.redhat.com/ubi9/buildah
       securityContext:
-        runAsNonRoot: true
         allowPrivilegeEscalation: false
         capabilities:
           add:
