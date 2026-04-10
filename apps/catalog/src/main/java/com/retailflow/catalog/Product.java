@@ -49,6 +49,6 @@ public class Product extends PanacheEntity {
     }
 
     public static List<Product> findActiveByCategory(String category) {
-        return list("active = true and category = :category", "category", category);
+        return find("active = true and category = ?1", category).list();
     }
 }
