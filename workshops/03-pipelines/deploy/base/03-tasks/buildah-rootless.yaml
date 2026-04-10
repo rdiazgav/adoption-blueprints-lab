@@ -46,12 +46,12 @@ spec:
       image: registry.access.redhat.com/ubi9/buildah
       securityContext:
         runAsNonRoot: true
-        runAsUser: 1000
         allowPrivilegeEscalation: false
-        seccompProfile:
-          type: RuntimeDefault
         capabilities:
-          drop: [ALL]
+          add:
+            - SETFCAP
+          drop:
+            - ALL
       env:
         - name: DOCKER_CONFIG
           value: "$(workspaces.dockerconfig.path)"
