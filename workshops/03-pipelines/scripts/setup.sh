@@ -7,7 +7,7 @@ BASE_DIR="$SCRIPT_DIR/../deploy/base"
 
 echo "==> [0/5] (Optional) Create Quay repositories..."
 read -r -p "    Do you want to create Quay repos now? [y/N] " CREATE_REPOS
-if [[ "${CREATE_REPOS,,}" == "y" ]]; then
+if [[ "$(echo "$CREATE_REPOS" | tr '[:upper:]' '[:lower:]')" == "y" ]]; then
   if [[ -z "${QUAY_USER:-}" || -z "${QUAY_TOKEN:-}" ]]; then
     echo "    QUAY_USER and QUAY_TOKEN must be set to create repos."
     echo "    Skipping. Run scripts/create-quay-repos.sh manually when ready."
