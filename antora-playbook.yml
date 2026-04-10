@@ -1,6 +1,6 @@
 site:
   title: Adoption Blueprints Lab
-  url: https://rdiazgav.github.io/adoption-blueprints-lab
+  url: https://rdiazgav.github.io
   start_page: adoption-blueprints-lab::index.adoc
 
 content:

@@ -203,6 +203,13 @@ recommendations-8c6d7f9b5-q9xtn  recommendations istio-proxy
 redis-7f9c8b6d5-v4zrp            redis
 ```
 
+> **Note:** CRC environments do not include the OpenShift monitoring stack.
+> A minimal Prometheus instance is deployed automatically as part of the
+> control plane manifests (`01-control-plane/prometheus.yaml`).
+> This is sufficient for Kiali graph visualization in workshop environments.
+> For production deployments, integrate Kiali with the
+> OpenShift built-in monitoring stack instead.
+
 ### What to look for
 
 - Application pods show `2/2` — the second container is `istio-proxy`

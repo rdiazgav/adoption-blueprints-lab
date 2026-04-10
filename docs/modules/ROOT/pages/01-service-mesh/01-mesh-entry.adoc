@@ -155,6 +155,16 @@ NAME      MODE     AGE
 default   STRICT   5m
 ----
 
+[NOTE]
+====
+CRC environments do not include the OpenShift monitoring stack.
+A minimal Prometheus instance is deployed automatically as part of the
+control plane manifests (`01-control-plane/prometheus.yaml`).
+This is sufficient for Kiali graph visualization in workshop environments.
+For production deployments, integrate Kiali with the
+OpenShift built-in monitoring stack instead.
+====
+
 == View in Kiali
 
 Generate traffic so the graph populates:
