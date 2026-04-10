@@ -16,7 +16,6 @@ GIT_URL=${GIT_URL:-https://github.com/rdiazgav/adoption-blueprints-lab.git}
 
 # Quarkus services require Maven build
 QUARKUS_SERVICES=("api-gateway" "orders" "catalog" "payments")
-GENERIC_SERVICES=("recommendations" "frontend")
 
 is_quarkus() {
   for s in "${QUARKUS_SERVICES[@]}"; do
@@ -26,16 +25,7 @@ is_quarkus() {
 }
 
 if is_quarkus "$SERVICE_NAME"; then
-  PIPELINE="quarkus-service-pipeline"
-  WORKSPACE_MAVEN='- name: maven-cache
-      persistentVolumeClaim:
-        claimName: pipeline-maven-cache-pvc'
-else
-  PIPELINE="generic-service-pipeline"
-  WORKSPACE_MAVEN=""
-fi
-
-RUN_NAME=$(oc create -f - <<EOF | awk '{print $1}' | sed 's|pipelinerun.tekton.dev/||'
+  RUN_NAME=$(oc create -f - <<EOF | awk '{print $1}' | sed 's|pipelinerun.tekton.dev/||'
 apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
@@ -43,7 +33,7 @@ metadata:
   namespace: ${NAMESPACE}
 spec:
   pipelineRef:
-    name: ${PIPELINE}
+    name: quarkus-service-pipeline
   serviceAccountName: pipeline-sa
   timeouts:
     pipeline: 30m
@@ -54,7 +44,9 @@ spec:
     - name: docker-credentials
       secret:
         secretName: quay-credentials
-$(echo "$WORKSPACE_MAVEN" | sed 's/^/    /')
+    - name: maven-cache
+      persistentVolumeClaim:
+        claimName: pipeline-maven-cache-pvc
   params:
     - name: GIT_URL
       value: "${GIT_URL}"
@@ -68,6 +60,40 @@ $(echo "$WORKSPACE_MAVEN" | sed 's/^/    /')
       value: "${GIT_REVISION}"
 EOF
 )
+else
+  RUN_NAME=$(oc create -f - <<EOF | awk '{print $1}' | sed 's|pipelinerun.tekton.dev/||'
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: ${SERVICE_NAME}-run-
+  namespace: ${NAMESPACE}
+spec:
+  pipelineRef:
+    name: generic-service-pipeline
+  serviceAccountName: pipeline-sa
+  timeouts:
+    pipeline: 30m
+  workspaces:
+    - name: source
+      persistentVolumeClaim:
+        claimName: pipeline-source-pvc
+    - name: docker-credentials
+      secret:
+        secretName: quay-credentials
+  params:
+    - name: GIT_URL
+      value: "${GIT_URL}"
+    - name: GIT_REVISION
+      value: "${GIT_REVISION}"
+    - name: SERVICE_NAME
+      value: "${SERVICE_NAME}"
+    - name: SERVICE_DIR
+      value: "apps/${SERVICE_NAME}"
+    - name: IMAGE_TAG
+      value: "${GIT_REVISION}"
+EOF
+)
+fi
 
 echo "==> PipelineRun created: $RUN_NAME"
 echo "    Following logs (Ctrl+C to detach, pipeline continues running)..."
