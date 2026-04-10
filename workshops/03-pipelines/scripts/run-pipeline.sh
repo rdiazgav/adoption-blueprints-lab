@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Usage: ./run-pipeline.sh <service-name> [git-revision]
 SERVICE_NAME="${1:-}"
-GIT_REVISION="${2:-latest}"
+GIT_REVISION="${2:-master}"
 
 if [[ -z "$SERVICE_NAME" ]]; then
   echo "Usage: $0 <service-name> [git-revision]"
@@ -39,8 +39,12 @@ spec:
     pipeline: 30m
   workspaces:
     - name: source
-      persistentVolumeClaim:
-        claimName: pipeline-source-pvc
+      volumeClaimTemplate:
+        spec:
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 1Gi
     - name: docker-credentials
       secret:
         secretName: quay-credentials
@@ -75,8 +79,12 @@ spec:
     pipeline: 30m
   workspaces:
     - name: source
-      persistentVolumeClaim:
-        claimName: pipeline-source-pvc
+      volumeClaimTemplate:
+        spec:
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 1Gi
     - name: docker-credentials
       secret:
         secretName: quay-credentials

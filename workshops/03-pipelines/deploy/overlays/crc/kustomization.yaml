@@ -7,10 +7,6 @@ bases:
   - ../../base/03-tasks
   - ../../base/04-pipelines
 patches:
-  - path: pipeline-source-pvc-patch.yaml
-    target:
-      kind: PersistentVolumeClaim
-      name: pipeline-source-pvc
   - path: pipeline-maven-cache-pvc-patch.yaml
     target:
       kind: PersistentVolumeClaim

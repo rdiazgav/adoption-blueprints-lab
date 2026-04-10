@@ -171,8 +171,7 @@ workshops/03-pipelines/
     │   │   └── quay-credentials.yaml.template  # TEMPLATE — do not commit filled-in version
     │   ├── 02-workspaces/
     │   │   ├── kustomization.yaml
-    │   │   ├── pipeline-source-pvc.yaml
-    │   │   └── pipeline-maven-cache-pvc.yaml
+    │   │   └── pipeline-maven-cache-pvc.yaml  # source uses volumeClaimTemplate (ephemeral)
     │   ├── 03-tasks/
     │   │   ├── kustomization.yaml
     │   │   ├── maven-build.yaml
@@ -193,7 +192,6 @@ workshops/03-pipelines/
     └── overlays/
         └── crc/
             ├── kustomization.yaml
-            ├── pipeline-source-pvc-patch.yaml
             └── pipeline-maven-cache-pvc-patch.yaml
 ```
 

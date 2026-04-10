@@ -19,7 +19,17 @@ else
 fi
 
 echo "==> [1/5] Installing OpenShift Pipelines operator..."
-oc apply -f "$BASE_DIR/00-operators/subscription.yaml"
+oc apply -k "$BASE_DIR/00-operators"
+# NOTE: coschedule must be disabled so that PipelineRuns using volumeClaimTemplates
+# for the source workspace can schedule without the affinity assistant blocking them.
+# This must be done via TektonConfig CR (not the feature-flags ConfigMap, which the
+# operator overwrites). The command below is idempotent:
+#
+#   oc patch tektonconfig config --type merge \
+#     -p '{"spec":{"pipeline":{"coschedule":"disabled"}}}'
+#
+# setup.sh does not apply this automatically because TektonConfig requires the
+# operator to have fully initialized. Run it manually after the CSV reaches Succeeded.
 
 echo "    Waiting for OpenShift Pipelines CSV to succeed (up to 5 min)..."
 for i in $(seq 1 30); do

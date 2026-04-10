@@ -14,8 +14,12 @@ spec:
     pipeline: 30m
   workspaces:
     - name: source
-      persistentVolumeClaim:
-        claimName: pipeline-source-pvc
+      volumeClaimTemplate:
+        spec:
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 1Gi
     - name: maven-cache
       persistentVolumeClaim:
         claimName: pipeline-maven-cache-pvc
