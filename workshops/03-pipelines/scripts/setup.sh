@@ -38,8 +38,9 @@ if [[ "$PHASE" != "Succeeded" ]]; then
 fi
 
 echo "==> [2/5] Installing community Tasks from Tekton Hub..."
-oc apply -f https://api.hub.tekton.dev/v1/resource/tekton/task/git-clone/0.9/raw -n "$NAMESPACE"
-oc apply -f https://api.hub.tekton.dev/v1/resource/tekton/task/buildah/0.6/raw -n "$NAMESPACE"
+TEKTON_CATALOG="https://raw.githubusercontent.com/tektoncd/catalog/main/task"
+oc apply -f "$TEKTON_CATALOG/git-clone/0.9/git-clone.yaml" -n "$NAMESPACE"
+oc apply -f "$TEKTON_CATALOG/buildah/0.6/buildah.yaml" -n "$NAMESPACE"
 
 echo "==> [3/5] Applying RBAC..."
 oc apply -k "$BASE_DIR/01-rbac"
