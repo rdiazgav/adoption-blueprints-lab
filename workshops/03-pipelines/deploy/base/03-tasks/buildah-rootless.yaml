@@ -74,14 +74,12 @@ spec:
         mkdir -p /tmp/.config/containers
         printf '[storage]\ndriver = "vfs"\n\n[storage.options]\nignore_chown_errors = "true"\n' \
           > /tmp/.config/containers/storage.conf
+        export CONTAINERS_STORAGE_CONF=/tmp/.config/containers/storage.conf
 
         buildah bud \
           --isolation=chroot \
-          --ignore-chown-errors \
-          --tls-verify=$(params.TLSVERIFY) \
-          --format=oci \
-          -f $(params.DOCKERFILE) \
           -t $(params.IMAGE) \
+          -f $(params.DOCKERFILE) \
           $(params.CONTEXT)
 
         buildah push \
