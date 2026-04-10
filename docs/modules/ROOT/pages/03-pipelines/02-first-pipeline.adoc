@@ -90,6 +90,8 @@ Triggers version: v0.x.x
 == Step 2 — Configure Quay Credentials
 
 The pipeline pushes images to Quay, so it needs a pull secret with write access.
+Apply the secret *before* running `setup.sh` — the setup script detects it during
+the RBAC step and links it to `pipeline-sa` automatically.
 
 Log in to Quay and encode the resulting Docker config:
 
@@ -109,12 +111,12 @@ cp workshops/03-pipelines/deploy/base/01-rbac/quay-credentials.yaml.template \
 # Edit quay-credentials.yaml:
 # replace <BASE64_ENCODED_DOCKER_CONFIG_JSON> with the output of base64 above
 oc apply -f quay-credentials.yaml -n retailflow
-
-# Link the secret to the pipeline service account
-oc secret link pipeline-sa quay-credentials --for=pull,mount -n retailflow
 ----
 
-Verify the link:
+`setup.sh` will link the secret to `pipeline-sa` automatically at step [3/5].
+If you applied the secret after running `setup.sh`, re-run it — the link step is idempotent.
+
+Verify the link after `setup.sh` completes:
 
 [source,bash]
 ----

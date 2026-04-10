@@ -123,14 +123,24 @@ OpenShift Route  ──► EventListener pod
 
 ## Quick Start
 
-### 1 — Install operators, RBAC, workspaces, tasks, and pipelines
+### 1 — Apply your Quay credentials secret
+
+```bash
+cp deploy/base/01-rbac/quay-credentials.yaml.template quay-credentials.yaml
+# Edit quay-credentials.yaml — paste your base64-encoded docker config
+oc apply -f quay-credentials.yaml -n retailflow
+```
+
+### 2 — Install operators, RBAC, workspaces, tasks, and pipelines
+
+`setup.sh` automatically links `quay-credentials` to `pipeline-sa` after applying RBAC (step 3/5), so no manual `oc secret link` is needed.
 
 ```bash
 cd workshops/03-pipelines
 bash scripts/setup.sh
 ```
 
-### 2 — Run the catalog pipeline manually
+### 3 — Run the catalog pipeline manually
 
 ```bash
 bash scripts/run-pipeline.sh catalog
