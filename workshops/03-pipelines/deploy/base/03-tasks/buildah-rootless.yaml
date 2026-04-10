@@ -82,7 +82,16 @@ spec:
           -f $(params.DOCKERFILE) \
           $(params.CONTEXT)
 
+        mkdir -p /tmp/.docker
+        if [ -f "$(workspaces.dockerconfig.path)/.dockerconfigjson" ]; then
+          cp $(workspaces.dockerconfig.path)/.dockerconfigjson /tmp/.docker/config.json
+        elif [ -f "$(workspaces.dockerconfig.path)/config.json" ]; then
+          cp $(workspaces.dockerconfig.path)/config.json /tmp/.docker/config.json
+        fi
+        export REGISTRY_AUTH_FILE=/tmp/.docker/config.json
+
         buildah push \
+          --authfile=/tmp/.docker/config.json \
           --tls-verify=$(params.TLSVERIFY) \
           --digestfile=/tmp/image-digest \
           $(params.IMAGE) \
