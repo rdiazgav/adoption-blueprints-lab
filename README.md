@@ -1,5 +1,12 @@
 # Adoption Blueprints Lab
 
+## 📖 Documentation
+
+The full workshop guides are available at:
+**https://rdiazgav.github.io/adoption-blueprints-lab**
+
+---
+
 A hands-on, modular lab platform built on top of a realistic reference application — **RetailFlow** — designed to demonstrate Red Hat OpenShift adoption across multiple technology areas.
 
 Each workshop is self-contained and can be taken independently or as part of a full adoption journey.
