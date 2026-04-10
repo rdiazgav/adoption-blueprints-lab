@@ -3,7 +3,7 @@
 ## 📖 Documentation
 
 The full workshop guides are available at:
-**https://rdiazgav.github.io/adoption-blueprints-lab**
+**https://rdiazgav.github.io/adoption-blueprints-lab/adoption-blueprints-lab/main/index.html**
 
 ---
 
