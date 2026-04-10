@@ -87,7 +87,7 @@ spec:
       runAfter:
         - build-service
       taskRef:
-        name: buildah
+        name: buildah-rootless
         kind: Task
       workspaces:
         - name: source
@@ -103,8 +103,6 @@ spec:
           value: "./src/main/docker/Dockerfile.jvm"
         - name: TLSVERIFY
           value: "true"
-        - name: STORAGE_DRIVER
-          value: "vfs"
 
     - name: deploy
       runAfter:

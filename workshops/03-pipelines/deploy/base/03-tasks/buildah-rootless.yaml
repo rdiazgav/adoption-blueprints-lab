@@ -1,0 +1,76 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: buildah-rootless
+  namespace: retailflow
+  labels:
+    app.kubernetes.io/part-of: retailflow
+    app.kubernetes.io/managed-by: kustomize
+  annotations:
+    tekton.dev/displayName: "Buildah (rootless, VFS, UBI9)"
+    tekton.dev/tags: buildah, image, oci
+spec:
+  description: >-
+    Builds and pushes an OCI container image using Buildah in rootless mode.
+    Uses --storage-driver=vfs for compatibility with the OpenShift restricted SCC.
+    Runs as UID 1000 with no privileges and no Linux capabilities.
+  params:
+    - name: IMAGE
+      type: string
+      description: "Full image reference to build and push, e.g. quay.io/rdiazgav/retailflow-catalog:abc1234"
+    - name: CONTEXT
+      type: string
+      description: "Path to the build context directory"
+      default: "."
+    - name: DOCKERFILE
+      type: string
+      description: "Path to the Dockerfile relative to the context"
+      default: "./Dockerfile"
+    - name: TLSVERIFY
+      type: string
+      description: "Verify TLS on push — set to 'false' for internal registries with self-signed certs"
+      default: "true"
+  workspaces:
+    - name: source
+      description: "Workspace containing the source code and build context"
+    - name: dockerconfig
+      description: "Optional Docker config.json for registry authentication"
+      optional: true
+  results:
+    - name: IMAGE_URL
+      description: "Full image reference that was pushed"
+    - name: IMAGE_DIGEST
+      description: "Image digest (sha256) of the pushed image"
+  steps:
+    - name: build-and-push
+      image: registry.access.redhat.com/ubi9/buildah
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        allowPrivilegeEscalation: false
+        seccompProfile:
+          type: RuntimeDefault
+        capabilities:
+          drop: [ALL]
+      env:
+        - name: DOCKER_CONFIG
+          value: "$(workspaces.dockerconfig.path)"
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        buildah --storage-driver=vfs bud \
+          --tls-verify=$(params.TLSVERIFY) \
+          --format=oci \
+          -f $(params.DOCKERFILE) \
+          -t $(params.IMAGE) \
+          $(params.CONTEXT)
+
+        buildah --storage-driver=vfs push \
+          --tls-verify=$(params.TLSVERIFY) \
+          --digestfile=/tmp/image-digest \
+          $(params.IMAGE) \
+          docker://$(params.IMAGE)
+
+        cat /tmp/image-digest | tee $(results.IMAGE_DIGEST.path)
+        echo -n "$(params.IMAGE)" | tee $(results.IMAGE_URL.path)

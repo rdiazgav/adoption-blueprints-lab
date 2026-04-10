@@ -65,7 +65,7 @@ spec:
       runAfter:
         - fetch-source
       taskRef:
-        name: buildah
+        name: buildah-rootless
         kind: Task
       workspaces:
         - name: source
@@ -81,8 +81,6 @@ spec:
           value: "./Dockerfile"
         - name: TLSVERIFY
           value: "true"
-        - name: STORAGE_DRIVER
-          value: "vfs"
 
     - name: deploy
       runAfter:

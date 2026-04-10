@@ -1,9 +1,9 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: retailflow
-# Community tasks from Tekton Hub (apply separately — not managed by Kustomize):
+# git-clone community task from Tekton Hub (apply separately — not managed by Kustomize):
 #   oc apply -f https://raw.githubusercontent.com/tektoncd/catalog/main/task/git-clone/0.9/git-clone.yaml -n retailflow
-#   oc apply -f https://raw.githubusercontent.com/tektoncd/catalog/main/task/buildah/0.6/buildah.yaml -n retailflow
 resources:
   - maven-build.yaml
+  - buildah-rootless.yaml
   - deploy-to-openshift.yaml

@@ -47,10 +47,11 @@ if [[ "$PHASE" != "Succeeded" ]]; then
   exit 1
 fi
 
-echo "==> [2/5] Installing community Tasks from Tekton Hub..."
+echo "==> [2/5] Installing community git-clone Task from Tekton Hub..."
 TEKTON_CATALOG="https://raw.githubusercontent.com/tektoncd/catalog/main/task"
 oc apply -f "$TEKTON_CATALOG/git-clone/0.9/git-clone.yaml" -n "$NAMESPACE"
-oc apply -f "$TEKTON_CATALOG/buildah/0.6/buildah.yaml" -n "$NAMESPACE"
+# buildah is no longer installed from Tekton Hub — buildah-rootless task is managed
+# via kustomize in deploy/base/03-tasks/ and applied in step [5/5] below.
 
 echo "==> [3/5] Applying RBAC..."
 oc apply -k "$BASE_DIR/01-rbac"
