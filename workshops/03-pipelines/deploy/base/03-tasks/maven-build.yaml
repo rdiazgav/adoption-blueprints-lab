@@ -31,19 +31,35 @@ spec:
   steps:
     - name: mvn-package
       image: registry.access.redhat.com/ubi9/openjdk-21
-      env:
-        - name: JAVA_TOOL_OPTIONS
-          value: "-Dorg.apache.maven.wrapper.skip=false"
       script: |
         #!/usr/bin/env bash
         set -euo pipefail
 
+        MAVEN_VERSION=3.9.9
+        MAVEN_HOME=$(workspaces.maven-cache.path)/.m2/maven-dist
+        MAVEN_ZIP=/tmp/maven-dist.zip
+
+        if [ ! -f "$MAVEN_HOME/bin/mvn" ]; then
+          curl -fsSL \
+            https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/${MAVEN_VERSION}/apache-maven-${MAVEN_VERSION}-bin.zip \
+            -o "$MAVEN_ZIP"
+
+          python3 -c "
+        import zipfile, os, stat
+        with zipfile.ZipFile('$MAVEN_ZIP') as z:
+            z.extractall('$(workspaces.maven-cache.path)/.m2/')
+        extracted = '$(workspaces.maven-cache.path)/.m2/apache-maven-${MAVEN_VERSION}'
+        os.rename(extracted, '$MAVEN_HOME')
+        for f in os.listdir('$MAVEN_HOME/bin'):
+            p = os.path.join('$MAVEN_HOME/bin', f)
+            os.chmod(p, os.stat(p).st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+        "
+          rm -f "$MAVEN_ZIP"
+        fi
+
+        export PATH="$MAVEN_HOME/bin:$PATH"
+
         cd $(workspaces.source.path)/$(params.SERVICE_DIR)
-
-        export MAVEN_USER_HOME=$(workspaces.maven-cache.path)/.m2
-        # Pin the wrapper base URL to Maven Central so no ambient env var redirects the download
-        export MVNW_REPOURL=https://repo.maven.apache.org/maven2
-
-        ./mvnw package \
-          -Dmaven.repo.local=${MAVEN_USER_HOME}/repository \
+        mvn package \
+          -Dmaven.repo.local=$(workspaces.maven-cache.path)/.m2/repository \
           $(params.MAVEN_ARGS)
