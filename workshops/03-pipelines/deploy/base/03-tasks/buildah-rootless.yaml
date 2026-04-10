@@ -41,31 +41,38 @@ spec:
       description: "Full image reference that was pushed"
     - name: IMAGE_DIGEST
       description: "Image digest (sha256) of the pushed image"
+  volumes:
+    - name: varlibcontainers
+      emptyDir: {}
   steps:
     - name: build-and-push
       image: registry.access.redhat.com/ubi9/buildah
       securityContext:
         allowPrivilegeEscalation: false
         capabilities:
-          add:
-            - SETFCAP
-          drop:
-            - ALL
+          drop: [ALL]
       env:
+        - name: STORAGE_DRIVER
+          value: vfs
+        - name: BUILDAH_ISOLATION
+          value: chroot
         - name: DOCKER_CONFIG
           value: "$(workspaces.dockerconfig.path)"
+      volumeMounts:
+        - name: varlibcontainers
+          mountPath: /var/lib/containers
       script: |
         #!/usr/bin/env bash
         set -euo pipefail
 
-        buildah --storage-driver=vfs bud \
+        buildah bud \
           --tls-verify=$(params.TLSVERIFY) \
           --format=oci \
           -f $(params.DOCKERFILE) \
           -t $(params.IMAGE) \
           $(params.CONTEXT)
 
-        buildah --storage-driver=vfs push \
+        buildah push \
           --tls-verify=$(params.TLSVERIFY) \
           --digestfile=/tmp/image-digest \
           $(params.IMAGE) \
