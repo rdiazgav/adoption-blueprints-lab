@@ -6,6 +6,54 @@ Estimated time: *30 minutes*
 [.lead]
 Install OpenShift Pipelines, configure Quay credentials, apply the pipeline manifests, and run the `catalog` service through a full CI cycle: clone → Maven build → Buildah image → Quay push → OpenShift deploy.
 
+== Step 0 — Create Quay Repositories
+
+Before the pipeline can push images, the destination repositories must exist in Quay.
+The `create-quay-repos.sh` script creates all six RetailFlow repositories via the Quay API
+and is safe to run multiple times (existing repositories are skipped).
+
+Set your credentials and run the script:
+
+[source,bash]
+----
+export QUAY_USER=<your-quay-username>
+export QUAY_TOKEN=<your-quay-api-token>
+bash workshops/03-pipelines/scripts/create-quay-repos.sh
+----
+
+.Expected output
+[source]
+----
+==> Creating RetailFlow repositories in quay.io/<user>...
+
+  [created]  retailflow-api-gateway
+  [created]  retailflow-orders
+  [created]  retailflow-catalog
+  [created]  retailflow-payments
+  [created]  retailflow-recommendations
+  [created]  retailflow-frontend
+
+─────────────────────────────────────────────
+  Created:         6
+  Already existed: 0
+  Failed:          0
+─────────────────────────────────────────────
+
+All repositories ready at: https://quay.io/<user>
+----
+
+[TIP]
+====
+Generate your API token at https://quay.io → top-right menu → *Account Settings* → *CLI Password* (or *Robot Accounts* for automation).
+The token requires the *Create Repositories* permission on your namespace.
+====
+
+[NOTE]
+====
+`setup.sh` prompts you to run this script automatically as its first step.
+If you ran `setup.sh` and answered `y`, you can skip this step.
+====
+
 == Step 1 — Install the Operator
 
 Apply the OpenShift Pipelines operator subscription:

@@ -4,6 +4,33 @@ Estimated total time: **90–120 minutes** | Difficulty: **Intermediate**
 
 ---
 
+## Before You Begin
+
+The pipeline pushes built images to **quay.io**. The six RetailFlow repositories must
+exist in your Quay account before you run a pipeline for the first time.
+
+```bash
+export QUAY_USER=<your-quay-username>
+export QUAY_TOKEN=<your-quay-api-token>   # Settings → CLI Password in quay.io
+bash scripts/create-quay-repos.sh
+```
+
+This creates (or skips if already present) the following public repositories:
+
+| Repository | Description |
+|---|---|
+| `quay.io/$QUAY_USER/retailflow-api-gateway` | RetailFlow api-gateway |
+| `quay.io/$QUAY_USER/retailflow-orders` | RetailFlow orders |
+| `quay.io/$QUAY_USER/retailflow-catalog` | RetailFlow catalog |
+| `quay.io/$QUAY_USER/retailflow-payments` | RetailFlow payments |
+| `quay.io/$QUAY_USER/retailflow-recommendations` | RetailFlow recommendations |
+| `quay.io/$QUAY_USER/retailflow-frontend` | RetailFlow frontend |
+
+> **Note:** `setup.sh` will prompt you to run this automatically as its first step.
+> You can also run `create-quay-repos.sh` independently at any time — it is idempotent.
+
+---
+
 ## Prerequisites
 
 - **Workshop 00 completed** — RetailFlow deployed and all pods healthy in `retailflow`
@@ -118,7 +145,8 @@ workshops/03-pipelines/
 ├── README.md                        # This file
 ├── scripts/
 │   ├── setup.sh                     # One-shot setup: operator + RBAC + workspaces + tasks + pipelines
-│   └── run-pipeline.sh              # Trigger a PipelineRun for any service
+│   ├── run-pipeline.sh              # Trigger a PipelineRun for any service
+│   └── create-quay-repos.sh         # Create RetailFlow repos in quay.io via API (idempotent)
 └── deploy/
     ├── base/
     │   ├── 00-operators/

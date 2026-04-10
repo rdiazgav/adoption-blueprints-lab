@@ -139,6 +139,37 @@ adoption-blueprints-lab/
 - `deploy/overlays/crc/` uses `emptyDir` for storage (no PersistentVolumeClaims)
 - Each workshop has its own `deploy/` directory with overlays for crc and demo-platform
 
+## Documentation
+
+### README ↔ Antora sync rule
+
+Whenever a workshop README.md is created or updated, the corresponding Antora
+pages under `docs/modules/ROOT/pages/<workshop-dir>/` must be updated in the
+same commit to stay in sync.
+
+Mapping covers all workshops, present and future:
+- `workshops/00-setup/README.md`         → `docs/.../00-setup/`
+- `workshops/01-service-mesh/README.md`  → `docs/.../01-service-mesh/`
+- `workshops/02-observability/README.md` → `docs/.../02-observability/`
+- `workshops/03-pipelines/README.md`     → `docs/.../03-pipelines/`
+- `workshops/04-gitops/README.md`        → `docs/.../04-gitops/`
+- `workshops/05-keycloak/README.md`      → `docs/.../05-keycloak/`
+- `workshops/06-quay/README.md`          → `docs/.../06-quay/`
+- `workshops/07-acs/README.md`           → `docs/.../07-acs/`
+- `workshops/08-acm/README.md`           → `docs/.../08-acm/`
+- `workshops/09-developer-hub/README.md` → `docs/.../09-developer-hub/`
+- `workshops/10-openshift-ai/README.md`  → `docs/.../10-openshift-ai/`
+
+When a new workshop is added, extend this mapping accordingly.
+
+Specifically:
+- New sections in README → new content in the relevant `.adoc` page
+- New scripts or commands → added to the appropriate `.adoc` step with
+  `[source,bash]` block and verification output
+- New files in `deploy/` → reflected in the repository layout in `index.adoc`
+
+This rule applies to all future workshops.
+
 ## What to build next
 
 The immediate priority is implementing the Quarkus services one by one, starting with `orders`.

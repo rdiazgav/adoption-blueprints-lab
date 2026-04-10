@@ -5,17 +5,41 @@ NAMESPACE=${NAMESPACE:-retailflow}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASE_DIR="$SCRIPT_DIR/../deploy/base"
 
+echo "==> [0/5] (Optional) Create Quay repositories..."
+read -r -p "    Do you want to create Quay repos now? [y/N] " CREATE_REPOS
+if [[ "${CREATE_REPOS,,}" == "y" ]]; then
+  if [[ -z "${QUAY_USER:-}" || -z "${QUAY_TOKEN:-}" ]]; then
+    echo "    QUAY_USER and QUAY_TOKEN must be set to create repos."
+    echo "    Skipping. Run scripts/create-quay-repos.sh manually when ready."
+  else
+    bash "$SCRIPT_DIR/create-quay-repos.sh"
+  fi
+else
+  echo "    Skipping. Run scripts/create-quay-repos.sh manually when ready."
+fi
+
 echo "==> [1/5] Installing OpenShift Pipelines operator..."
 oc apply -f "$BASE_DIR/00-operators/subscription.yaml"
 
 echo "    Waiting for OpenShift Pipelines CSV to succeed (up to 5 min)..."
-oc wait --for=jsonpath='{.status.phase}'=Succeeded \
-  csv -l operators.coreos.com/openshift-pipelines-operator-rh.openshift-operators \
-  -n openshift-operators --timeout=300s
+for i in $(seq 1 30); do
+  PHASE=$(oc get csv -n openshift-operators \
+    --no-headers 2>/dev/null | grep pipelines | awk '{print $NF}' || true)
+  if [[ "$PHASE" == "Succeeded" ]]; then
+    echo "    CSV ready."
+    break
+  fi
+  echo "    ($i/30) CSV phase: ${PHASE:-pending}..."
+  sleep 10
+done
+if [[ "$PHASE" != "Succeeded" ]]; then
+  echo "ERROR: Pipelines operator did not reach Succeeded after 5 min" >&2
+  exit 1
+fi
 
 echo "==> [2/5] Installing community Tasks from Tekton Hub..."
-oc apply -f https://raw.githubusercontent.com/tektoncd/catalog/main/task/git-clone/0.9/git-clone.yaml -n "$NAMESPACE"
-oc apply -f https://raw.githubusercontent.com/tektoncd/catalog/main/task/buildah/0.6/buildah.yaml -n "$NAMESPACE"
+oc apply -f https://api.hub.tekton.dev/v1/resource/tekton/task/git-clone/0.9/raw -n "$NAMESPACE"
+oc apply -f https://api.hub.tekton.dev/v1/resource/tekton/task/buildah/0.6/raw -n "$NAMESPACE"
 
 echo "==> [3/5] Applying RBAC..."
 oc apply -k "$BASE_DIR/01-rbac"

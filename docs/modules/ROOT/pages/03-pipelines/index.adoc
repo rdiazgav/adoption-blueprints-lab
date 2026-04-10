@@ -101,6 +101,29 @@ OpenShift Route  ──► EventListener pod
 | Configure a GitHub webhook so every `git push` to `main`/`master` automatically launches a PipelineRun
 |===
 
+== Before You Begin
+
+[IMPORTANT]
+====
+The pipeline pushes built images to *quay.io*. The six RetailFlow repositories must exist in your Quay account before you run a pipeline for the first time.
+
+Set your Quay credentials and run the pre-creation script:
+
+[source,bash]
+----
+export QUAY_USER=<your-quay-username>
+export QUAY_TOKEN=<your-quay-api-token>   # Settings → CLI Password in quay.io
+bash workshops/03-pipelines/scripts/create-quay-repos.sh
+----
+
+This creates (or skips if already present) all six public repositories:
+`retailflow-api-gateway`, `retailflow-orders`, `retailflow-catalog`,
+`retailflow-payments`, `retailflow-recommendations`, `retailflow-frontend`.
+
+The script is idempotent — re-running it is safe.
+Alternatively, `setup.sh` will prompt you to run it as its first step.
+====
+
 == Quick Start
 
 === Step 1 — Install and configure everything
