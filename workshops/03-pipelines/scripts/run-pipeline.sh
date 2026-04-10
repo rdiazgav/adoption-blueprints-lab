@@ -35,6 +35,11 @@ spec:
   pipelineRef:
     name: quarkus-service-pipeline
   serviceAccountName: pipeline-sa
+  taskRunTemplate:
+    podTemplate:
+      metadata:
+        annotations:
+          sidecar.istio.io/inject: "false"
   timeouts:
     pipeline: 30m
   workspaces:
@@ -75,6 +80,11 @@ spec:
   pipelineRef:
     name: generic-service-pipeline
   serviceAccountName: pipeline-sa
+  taskRunTemplate:
+    podTemplate:
+      metadata:
+        annotations:
+          sidecar.istio.io/inject: "false"
   timeouts:
     pipeline: 30m
   workspaces:
