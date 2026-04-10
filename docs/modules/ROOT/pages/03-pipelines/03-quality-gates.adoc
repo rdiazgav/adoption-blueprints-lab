@@ -1,0 +1,158 @@
+= Quality Gates: Shift-Left Testing
+:navtitle: Quality gates
+
+Estimated time: *15 minutes*
+
+[.lead]
+The `maven-build` Task runs `mvn package` with `-DskipTests=false` by default, making the test suite a blocking gate in the pipeline.
+A failing test fails the entire PipelineRun — preventing a broken image from reaching Quay or the cluster.
+
+== What Is Shift-Left?
+
+"Shift-left" means moving validation activities earlier in the development cycle — closer to the developer, farther from production.
+In traditional workflows, tests run after a release candidate is assembled.
+In a shift-left pipeline, tests run before the container image is even built.
+
+The benefit is fast, cheap feedback: a failing unit test surfaces in 2–3 minutes during the Maven build step, rather than 20–30 minutes into an integration test suite or, worse, after a deployment.
+Developers stay in context and can fix the issue immediately rather than context-switching back from a later stage.
+
+== Maven Tests in the Pipeline
+
+The `maven-build` Task controls test execution through the `MAVEN_ARGS` parameter.
+The default value is `-DskipTests=false`, which means tests run unless explicitly disabled.
+
+[source,yaml]
+----
+# deploy/base/03-tasks/maven-build.yaml (relevant excerpt)
+params:
+  - name: MAVEN_ARGS
+    type: string
+    default: "-DskipTests=false"
+    description: "Extra Maven arguments"
+----
+
+The `quarkus-service-pipeline` passes this through the `SKIP_TESTS` pipeline parameter:
+
+[source,yaml]
+----
+# deploy/base/04-pipelines/quarkus-service-pipeline.yaml (relevant excerpt)
+- name: build-service
+  taskRef:
+    name: maven-build
+  params:
+    - name: MAVEN_ARGS
+      value: "-DskipTests=$(params.SKIP_TESTS)"
+----
+
+`SKIP_TESTS` defaults to `"false"`, so the full test suite runs on every PipelineRun unless you explicitly pass `SKIP_TESTS=true`.
+
+To run the catalog pipeline with tests explicitly enabled (the default):
+
+[source,bash]
+----
+oc create -f - <<EOF
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: catalog-quality-run-
+  namespace: retailflow
+spec:
+  pipelineRef:
+    name: quarkus-service-pipeline
+  serviceAccountName: pipeline-sa
+  timeouts:
+    pipeline: 30m
+  workspaces:
+    - name: source
+      persistentVolumeClaim:
+        claimName: pipeline-source-pvc
+    - name: maven-cache
+      persistentVolumeClaim:
+        claimName: pipeline-maven-cache-pvc
+    - name: docker-credentials
+      secret:
+        secretName: quay-credentials
+  params:
+    - name: GIT_URL
+      value: "https://github.com/rdiazgav/adoption-blueprints-lab.git"
+    - name: SERVICE_NAME
+      value: "catalog"
+    - name: SERVICE_DIR
+      value: "apps/catalog"
+    - name: SKIP_TESTS
+      value: "false"
+    - name: IMAGE_TAG
+      value: "latest"
+EOF
+----
+
+== Interpreting Test Output in Pipeline Logs
+
+When `maven-build` runs with `-DskipTests=false`, the Maven Surefire plugin outputs test results to the `TaskRun` log.
+
+.Example: all tests pass
+[source]
+----
+[build-service : mvn-package] [INFO] -------------------------------------------------------
+[build-service : mvn-package] [INFO]  T E S T S
+[build-service : mvn-package] [INFO] -------------------------------------------------------
+[build-service : mvn-package] [INFO] Running com.retailflow.catalog.CatalogResourceTest
+[build-service : mvn-package] [INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 8.421 s
+[build-service : mvn-package] [INFO]
+[build-service : mvn-package] [INFO] Results:
+[build-service : mvn-package] [INFO]
+[build-service : mvn-package] [INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0
+[build-service : mvn-package] [INFO]
+[build-service : mvn-package] [INFO] BUILD SUCCESS
+----
+
+.Example: a test failure blocks the pipeline
+[source]
+----
+[build-service : mvn-package] [ERROR] Tests run: 3, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 7.912 s <<< FAILURE!
+[build-service : mvn-package] [ERROR] com.retailflow.catalog.CatalogResourceTest.testListProducts -- Time elapsed: 1.201 s <<< FAILURE!
+[build-service : mvn-package] java.lang.AssertionError: expected status 200 but was 500
+[build-service : mvn-package]
+[build-service : mvn-package] [INFO] BUILD FAILURE
+----
+
+When Maven exits with a non-zero status, Tekton marks the `build-service` TaskRun as `Failed` and the PipelineRun stops immediately.
+The `build-image`, `deploy` Tasks do not run.
+
+To see the failure in the CLI:
+
+[source,bash]
+----
+tkn pipelinerun describe --last -n retailflow
+----
+
+== Extension: Code Quality Gates
+
+The `maven-build` Task runs `./mvnw package`, which compiles, tests, and packages the JAR.
+You can extend this quality gate by adding Maven plugins to the service's `pom.xml`:
+
+* **Checkstyle** — enforces coding style rules: `maven-checkstyle-plugin`
+* **SpotBugs** — static analysis for common bug patterns: `spotbugs-maven-plugin`
+* **JaCoCo** — code coverage enforcement: `jacoco-maven-plugin` with a minimum ratio threshold
+
+These plugins run as part of the Maven lifecycle and fail the build (and therefore the pipeline) automatically if thresholds are not met.
+No changes to the Task or Pipeline YAML are required — the `pom.xml` controls the rules.
+
+An alternative approach is to add a dedicated `code-quality` Task before `build-service` in the pipeline that runs the analysis tools and publishes a report as a TaskRun result.
+This separates quality reporting from build failure, making it easier to track quality trends over time without blocking every commit.
+
+== Python Services: Tests in the Dockerfile
+
+[NOTE]
+====
+The `recommendations` service runs no external test step in the pipeline.
+Tests are expected to run inside the container build as part of a `RUN pip install` or a separate `RUN pytest` step in the Dockerfile.
+This is a deliberate tradeoff: it keeps the `generic-service-pipeline` simple at the cost of reduced visibility in the pipeline UI.
+If the Dockerfile's test step fails, the `buildah` Task will fail with a non-zero exit code, blocking the pipeline — but the failure message appears in the Buildah log rather than as a named test result.
+====
+
+[TIP]
+====
+To add `pytest` visibility as a named pipeline step, create a custom `python-test` Task modeled after `maven-build`.
+The Task would run `pip install -r requirements.txt && pytest` in its own step, publish the test count as a TaskRun result, and be inserted into `generic-service-pipeline` between `fetch-source` and `build-image`.
+====

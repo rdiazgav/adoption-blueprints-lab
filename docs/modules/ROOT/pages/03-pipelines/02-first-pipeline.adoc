@@ -1,0 +1,227 @@
+= First Pipeline: Build and Deploy catalog
+:navtitle: First pipeline
+
+Estimated time: *30 minutes*
+
+[.lead]
+Install OpenShift Pipelines, configure Quay credentials, apply the pipeline manifests, and run the `catalog` service through a full CI cycle: clone → Maven build → Buildah image → Quay push → OpenShift deploy.
+
+== Step 1 — Install the Operator
+
+Apply the OpenShift Pipelines operator subscription:
+
+[source,bash]
+----
+oc apply -f workshops/03-pipelines/deploy/base/00-operators/subscription.yaml
+----
+
+Wait for the operator CSV to reach the `Succeeded` phase (up to 5 minutes on a fresh cluster):
+
+[source,bash]
+----
+oc wait --for=jsonpath='{.status.phase}'=Succeeded \
+  csv -l operators.coreos.com/openshift-pipelines-operator-rh.openshift-operators \
+  -n openshift-operators --timeout=300s
+----
+
+Verify the `tkn` CLI can talk to the cluster:
+
+[source,bash]
+----
+tkn version
+----
+
+.Expected output
+[source]
+----
+Client version: 1.14.x
+Pipeline version: v0.x.x
+Triggers version: v0.x.x
+----
+
+== Step 2 — Configure Quay Credentials
+
+The pipeline pushes images to Quay, so it needs a pull secret with write access.
+
+Log in to Quay and encode the resulting Docker config:
+
+[source,bash]
+----
+podman login quay.io
+base64 -w0 ~/.docker/config.json
+----
+
+Copy the template, paste the base64 output, and apply:
+
+[source,bash]
+----
+cp workshops/03-pipelines/deploy/base/01-rbac/quay-credentials.yaml.template \
+   quay-credentials.yaml
+
+# Edit quay-credentials.yaml:
+# replace <BASE64_ENCODED_DOCKER_CONFIG_JSON> with the output of base64 above
+oc apply -f quay-credentials.yaml -n retailflow
+
+# Link the secret to the pipeline service account
+oc secret link pipeline-sa quay-credentials --for=pull,mount -n retailflow
+----
+
+Verify the link:
+
+[source,bash]
+----
+oc get sa pipeline-sa -n retailflow -o jsonpath='{.secrets[*].name}'
+----
+
+[WARNING]
+====
+Never commit the filled-in `quay-credentials.yaml` to git.
+The `.template` suffix signals that it is safe to track — the real file must stay out of source control.
+Add `quay-credentials.yaml` (without `.template`) to your `.gitignore` if you work in a fork of this repository.
+====
+
+== Step 3 — Install Tasks from Tekton Hub
+
+The pipeline uses two community Tasks from link:https://hub.tekton.dev[Tekton Hub].
+Apply them directly into the `retailflow` namespace:
+
+[source,bash]
+----
+oc apply -f https://raw.githubusercontent.com/tektoncd/catalog/main/task/git-clone/0.9/git-clone.yaml \
+  -n retailflow
+
+oc apply -f https://raw.githubusercontent.com/tektoncd/catalog/main/task/buildah/0.6/buildah.yaml \
+  -n retailflow
+----
+
+[NOTE]
+====
+Buildah in OpenShift requires the pipeline ServiceAccount to have the `privileged` SCC.
+The OpenShift Pipelines Operator grants this automatically to the default `pipeline` ServiceAccount.
+Because this workshop uses a custom `pipeline-sa` ServiceAccount, the operator may not grant it automatically.
+If the `buildah` step fails with a permission error, run:
+
+[source,bash]
+----
+oc adm policy add-scc-to-user privileged -z pipeline-sa -n retailflow
+----
+====
+
+== Step 4 — Apply RBAC, Workspaces, Tasks, and Pipelines
+
+Run the setup script to apply everything in the correct order:
+
+[source,bash]
+----
+bash workshops/03-pipelines/scripts/setup.sh
+----
+
+Or apply each directory manually if you want to follow each step:
+
+[source,bash]
+----
+oc apply -k workshops/03-pipelines/deploy/base/01-rbac
+oc apply -k workshops/03-pipelines/deploy/base/02-workspaces
+oc apply -k workshops/03-pipelines/deploy/base/03-tasks
+oc apply -k workshops/03-pipelines/deploy/base/04-pipelines
+----
+
+Confirm all Tasks and Pipelines are present:
+
+[source,bash]
+----
+tkn task list -n retailflow
+tkn pipeline list -n retailflow
+----
+
+== Step 5 — Run the catalog Pipeline
+
+Create a PipelineRun from the example manifest:
+
+[source,bash]
+----
+oc create -f workshops/03-pipelines/deploy/base/04-pipelines/catalog-pipeline-run.yaml
+----
+
+Follow the logs in real time:
+
+[source,bash]
+----
+tkn pipelinerun logs -f --last -n retailflow
+----
+
+.Expected output (abbreviated)
+[source]
+----
+[fetch-source : clone] + git clone https://github.com/rdiazgav/adoption-blueprints-lab.git /workspace/output
+[fetch-source : clone] Cloning into '/workspace/output'...
+[fetch-source : clone] done.
+
+[build-service : mvn-package] [INFO] Scanning for projects...
+[build-service : mvn-package] [INFO] Building catalog 1.0.0-SNAPSHOT
+[build-service : mvn-package] [INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0
+[build-service : mvn-package] [INFO] BUILD SUCCESS
+
+[build-image : build] STEP 1/8: FROM registry.access.redhat.com/ubi9/openjdk-21-runtime:1.20
+[build-image : build] STEP 8/8: ENTRYPOINT ["java", "-jar", "/deployments/quarkus-run.jar"]
+[build-image : push] Getting image source signatures
+[build-image : push] Writing manifest to image destination
+
+[deploy : oc-set-image] deployment.apps/catalog image updated
+[deploy : oc-set-image] Waiting for deployment "catalog" rollout to finish...
+[deploy : oc-set-image] deployment "catalog" successfully rolled out
+----
+
+== Step 6 — Verify Deployment Updated
+
+Confirm the Deployment image now points to the newly built image in Quay:
+
+[source,bash]
+----
+oc get deployment catalog -n retailflow \
+  -o jsonpath='{.spec.template.spec.containers[0].image}'
+----
+
+.Expected output
+[source]
+----
+quay.io/rdiazgav/retailflow-catalog:latest
+----
+
+Check that the new pod is running:
+
+[source,bash]
+----
+oc get pods -n retailflow -l app.kubernetes.io/name=catalog
+----
+
+== Troubleshooting
+
+[cols="3,3,4",options="header"]
+|===
+| Symptom | Likely Cause | Fix
+
+| `TaskRun` stays in `Pending` state
+| PVC not bound (no default StorageClass on CRC)
+| Use the CRC overlay: `oc apply -k workshops/03-pipelines/deploy/overlays/crc`
+
+| `buildah` step: `permission denied` or `cannot create new SCC`
+| `pipeline-sa` lacks the `privileged` SCC
+| `oc adm policy add-scc-to-user privileged -z pipeline-sa -n retailflow`
+
+| `git-clone` step: `Repository not found` or `Authentication failed`
+| Repository is private or URL is wrong
+| Verify `GIT_URL` in the PipelineRun; for private repos add an SSH key Secret and mount it as a workspace
+
+| `buildah push` fails with `unauthorized: access to the requested resource is not authorized`
+| `quay-credentials` Secret not linked to `pipeline-sa`
+| `oc secret link pipeline-sa quay-credentials --for=pull,mount -n retailflow`
+
+| `deploy-to-openshift` step: `Error from server (NotFound): deployments.apps "catalog" not found`
+| Workshop 00 not completed — RetailFlow not deployed
+| Deploy RetailFlow first: `oc apply -k deploy/overlays/crc`
+
+| PipelineRun shows `Failed` immediately after creation
+| Pipeline or Task not found (applied to wrong namespace)
+| `tkn task list -n retailflow` — verify all four Tasks are present
+|===

@@ -1,0 +1,176 @@
+= Multi-Stack Pipelines: Python and Node.js
+:navtitle: Multi-stack pipelines
+
+Estimated time: *20 minutes*
+
+[.lead]
+RetailFlow is a polyglot application: four services are Quarkus/Java, one is Python/FastAPI, and one is Node.js/React.
+This scenario runs the Python `recommendations` service and the Node.js `frontend` service through the `generic-service-pipeline` — a simpler pipeline that skips Maven and delegates all build tooling to the service's own Dockerfile.
+
+== Two Pipelines, Not One
+
+It is tempting to build a single universal pipeline with conditionals:
+"if language == java, run Maven; else skip it."
+Tekton supports this with `when` expressions on Task entries, but the result is hard to read and harder to debug.
+
+A cleaner approach is two pipelines with different shapes:
+
+* `quarkus-service-pipeline` — clone → Maven build+test → Buildah → Quay → deploy
+* `generic-service-pipeline` — clone → Buildah → Quay → deploy
+
+Each pipeline does exactly what its service stack requires, nothing more.
+Adding a third language (for example, Go) means adding a third pipeline — not extending an existing one with more conditionals.
+
+== Side-by-Side Comparison
+
+[cols="3,3,3",options="header"]
+|===
+| Step | `quarkus-service-pipeline` | `generic-service-pipeline`
+
+| Clone source
+| `git-clone` Task
+| `git-clone` Task
+
+| Language-specific build
+| `maven-build` Task (`./mvnw package`, tests, JAR assembly)
+| — (handled inside Dockerfile)
+
+| Container image build
+| `buildah` Task, Dockerfile: `./src/main/docker/Dockerfile.jvm`
+| `buildah` Task, Dockerfile: `./Dockerfile`
+
+| Push to registry
+| `buildah` Task (push step)
+| `buildah` Task (push step)
+
+| Deploy to OpenShift
+| `deploy-to-openshift` Task
+| `deploy-to-openshift` Task
+
+| Workspaces
+| `source`, `maven-cache`, `docker-credentials`
+| `source`, `docker-credentials`
+
+| Quality gate
+| Maven Surefire (JUnit) — blocks on test failure
+| Dockerfile `RUN` steps — blocks on non-zero exit
+|===
+
+== Run the Recommendations Pipeline
+
+The `recommendations-pipeline-run.yaml` example targets the Python service:
+
+[source,bash]
+----
+oc create -f workshops/03-pipelines/deploy/base/04-pipelines/recommendations-pipeline-run.yaml
+----
+
+Follow the logs:
+
+[source,bash]
+----
+tkn pipelinerun logs -f --last -n retailflow
+----
+
+.Expected output (abbreviated)
+[source]
+----
+[fetch-source : clone] Cloning into '/workspace/output'...
+[fetch-source : clone] done.
+
+[build-image : build] STEP 1/6: FROM python:3.11-slim
+[build-image : build] STEP 2/6: WORKDIR /app
+[build-image : build] STEP 3/6: COPY requirements.txt .
+[build-image : build] STEP 4/6: RUN pip install --no-cache-dir -r requirements.txt
+[build-image : build] STEP 5/6: COPY . .
+[build-image : build] STEP 6/6: CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+[build-image : push] Writing manifest to image destination
+
+[deploy : oc-set-image] deployment.apps/recommendations image updated
+[deploy : oc-set-image] deployment "recommendations" successfully rolled out
+----
+
+== Run the Frontend Pipeline
+
+The `frontend` service uses Node.js and React.
+There is no pre-built example PipelineRun for frontend — create one inline:
+
+[source,bash]
+----
+oc create -f - <<EOF
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: frontend-run-
+  namespace: retailflow
+spec:
+  pipelineRef:
+    name: generic-service-pipeline
+  serviceAccountName: pipeline-sa
+  timeouts:
+    pipeline: 30m
+  workspaces:
+    - name: source
+      persistentVolumeClaim:
+        claimName: pipeline-source-pvc
+    - name: docker-credentials
+      secret:
+        secretName: quay-credentials
+  params:
+    - name: GIT_URL
+      value: "https://github.com/rdiazgav/adoption-blueprints-lab.git"
+    - name: GIT_REVISION
+      value: "master"
+    - name: SERVICE_NAME
+      value: "frontend"
+    - name: SERVICE_DIR
+      value: "apps/frontend"
+    - name: IMAGE_TAG
+      value: "latest"
+EOF
+----
+
+Watch the pipeline in real time:
+
+[source,bash]
+----
+tkn pipelinerun logs -f --last -n retailflow
+----
+
+== Verify All Services Built
+
+After running pipelines for `catalog`, `recommendations`, and `frontend`, list all PipelineRuns:
+
+[source,bash]
+----
+tkn pipelinerun list -n retailflow
+----
+
+.Expected output
+[source]
+----
+NAME                              STARTED         DURATION   STATUS
+frontend-run-x9k2m                3 minutes ago   2m30s      Succeeded
+recommendations-pipeline-run-...  8 minutes ago   3m15s      Succeeded
+catalog-pipeline-run-v7jq4        15 minutes ago  9m42s      Succeeded
+----
+
+Confirm all three Deployments were updated:
+
+[source,bash]
+----
+for svc in catalog recommendations frontend; do
+  echo -n "$svc: "
+  oc get deployment "$svc" -n retailflow \
+    -o jsonpath='{.spec.template.spec.containers[0].image}'
+  echo
+done
+----
+
+.Expected output
+[source]
+----
+catalog: quay.io/rdiazgav/retailflow-catalog:latest
+recommendations: quay.io/rdiazgav/retailflow-recommendations:latest
+frontend: quay.io/rdiazgav/retailflow-frontend:latest
+----

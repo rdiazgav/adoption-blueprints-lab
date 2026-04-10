@@ -13,3 +13,10 @@
 ** xref:01-service-mesh/03-canary.adoc[Canary Release]
 ** xref:01-service-mesh/04-circuit-breaker.adoc[Circuit Breaker]
 ** xref:01-service-mesh/05-authz-policy.adoc[Authorization Policy]
+
+* xref:03-pipelines/index.adoc[Workshop 03 — OpenShift Pipelines]
+** xref:03-pipelines/01-fundamentals.adoc[Tekton fundamentals]
+** xref:03-pipelines/02-first-pipeline.adoc[First pipeline]
+** xref:03-pipelines/03-quality-gates.adoc[Quality gates]
+** xref:03-pipelines/04-multi-stack.adoc[Multi-stack pipelines]
+** xref:03-pipelines/05-triggers.adoc[Triggers & automation]

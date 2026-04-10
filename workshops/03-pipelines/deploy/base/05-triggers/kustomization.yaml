@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: retailflow
+resources:
+  - triggerbinding.yaml
+  - triggertemplate.yaml
+  - eventlistener.yaml
+  - route.yaml
+# github-webhook-secret.yaml.template must be filled in and applied manually:
+#   oc apply -f github-webhook-secret.yaml -n retailflow

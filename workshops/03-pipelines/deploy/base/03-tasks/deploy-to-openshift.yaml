@@ -1,0 +1,42 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: deploy-to-openshift
+  namespace: retailflow
+  labels:
+    app.kubernetes.io/part-of: retailflow
+    app.kubernetes.io/managed-by: kustomize
+  annotations:
+    tekton.dev/displayName: "Deploy to OpenShift"
+    tekton.dev/tags: openshift, deploy
+spec:
+  description: >-
+    Updates a Deployment image and waits for rollout to complete.
+    Uses the OpenShift CLI image available in the internal registry.
+    The pipeline-sa ServiceAccount must have sufficient RBAC to patch
+    Deployments in the target namespace.
+  params:
+    - name: DEPLOYMENT_NAME
+      type: string
+      description: "Name of the Deployment to update"
+    - name: CONTAINER_NAME
+      type: string
+      description: "Name of the container within the Deployment to update"
+    - name: IMAGE
+      type: string
+      description: "Full image reference including tag, e.g. quay.io/rdiazgav/retailflow-catalog:abc1234"
+    - name: NAMESPACE
+      type: string
+      default: "retailflow"
+      description: "Namespace where the Deployment lives"
+  steps:
+    - name: oc-set-image
+      image: image-registry.openshift-image-registry.svc:5000/openshift/cli:latest
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        oc set image deployment/$(params.DEPLOYMENT_NAME) \
+          $(params.CONTAINER_NAME)=$(params.IMAGE) \
+          -n $(params.NAMESPACE)
+        oc rollout status deployment/$(params.DEPLOYMENT_NAME) \
+          -n $(params.NAMESPACE) --timeout=5m

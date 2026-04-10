@@ -1,0 +1,220 @@
+= Triggers: GitHub Webhook Automation
+:navtitle: Triggers & automation
+
+Estimated time: *20 minutes*
+
+[.lead]
+Connect GitHub to OpenShift Pipelines so that every `git push` to `main` or `master` automatically creates a PipelineRun — no manual `oc create` required.
+Tekton Triggers handles the entire flow: HTTP event reception, HMAC validation, branch filtering, parameter extraction, and PipelineRun creation.
+
+== Tekton Triggers Architecture
+
+[source]
+----
+GitHub repository
+    │
+    │  HTTP POST  (push event, signed with HMAC secret)
+    ▼
+OpenShift Route: github-webhook-route
+    │  (edge TLS termination → HTTP on port 8080)
+    ▼
+EventListener pod: el-github-push-listener
+    │
+    ├─ Interceptor 1: github
+    │   Validates HMAC signature using github-webhook-secret
+    │   Filters by eventTypes: [push]
+    │
+    ├─ Interceptor 2: cel
+    │   Filters: body.ref == 'refs/heads/main'
+    │          || body.ref == 'refs/heads/master'
+    │
+    ▼
+TriggerBinding: github-push-binding
+    Extracts from payload:
+      git-revision ← body.head_commit.id
+      git-url      ← body.repository.clone_url
+      service-name ← body.repository.name
+    │
+    ▼
+TriggerTemplate: retailflow-trigger-template
+    Creates a PipelineRun with the extracted parameters
+    │
+    ▼
+PipelineRun: <service-name>-triggered-<random>
+    Runs quarkus-service-pipeline
+----
+
+== Step 1 — Create the Webhook Secret
+
+Generate a random secret string and record it — you will paste it into both the OpenShift Secret and the GitHub webhook configuration:
+
+[source,bash]
+----
+openssl rand -hex 20
+----
+
+.Example output
+[source]
+----
+a3f8b2c9d1e4f7a0b5c8d2e6f1a4b7c0d3e9f2a5
+----
+
+Copy the template and fill in the secret:
+
+[source,bash]
+----
+cp workshops/03-pipelines/deploy/base/05-triggers/github-webhook-secret.yaml.template \
+   github-webhook-secret.yaml
+
+# Edit github-webhook-secret.yaml:
+# replace <YOUR_WEBHOOK_SECRET_HERE> with the openssl output
+
+oc apply -f github-webhook-secret.yaml -n retailflow
+----
+
+[WARNING]
+====
+Never commit the filled-in `github-webhook-secret.yaml` to git.
+The secret value must stay out of source control.
+Add `github-webhook-secret.yaml` (without `.template`) to your `.gitignore`.
+====
+
+== Step 2 — Apply Triggers
+
+Apply the TriggerBinding, TriggerTemplate, EventListener, and Route:
+
+[source,bash]
+----
+oc apply -k workshops/03-pipelines/deploy/base/05-triggers/
+----
+
+Wait for the EventListener pod to be ready:
+
+[source,bash]
+----
+oc wait --for=condition=Ready pod \
+  -l eventlistener=github-push-listener \
+  -n retailflow --timeout=60s
+----
+
+== Step 3 — Get the Webhook URL
+
+Retrieve the public URL of the EventListener Route:
+
+[source,bash]
+----
+oc get route github-webhook-route -n retailflow \
+  -o jsonpath='{.spec.host}'
+----
+
+.Example output
+[source]
+----
+github-webhook-route-retailflow.apps-crc.testing
+----
+
+The full webhook URL to configure in GitHub is:
+
+[source]
+----
+https://<host-from-above>
+----
+
+== Step 4 — Configure GitHub Webhook
+
+In your GitHub repository:
+
+. Navigate to **Settings** → **Webhooks** → **Add webhook**
+. Set **Payload URL** to the HTTPS route URL from Step 3
+. Set **Content type** to `application/json`
+. Set **Secret** to the same value you generated in Step 1
+. Under **Which events would you like to trigger this webhook?** select **Just the push event**
+. Click **Add webhook**
+
+GitHub sends a `ping` event immediately.
+The EventListener pod will log the ping and return `200 OK` (pings do not trigger a PipelineRun — only `push` events do).
+
+== Step 5 — Test: Push a Change
+
+Make a small, visible change to one of the Quarkus services and push it:
+
+[source,bash]
+----
+# Example: add a comment to the catalog application entry point
+echo "// trigger pipeline" >> apps/catalog/src/main/java/com/retailflow/catalog/CatalogResource.java
+git add apps/catalog/src/main/java/com/retailflow/catalog/CatalogResource.java
+git commit -m "chore: trigger pipeline smoke test"
+git push
+----
+
+Within a few seconds, a PipelineRun should appear in the `retailflow` namespace:
+
+[source,bash]
+----
+tkn pipelinerun list -n retailflow
+----
+
+.Expected output
+[source]
+----
+NAME                             STARTED        DURATION   STATUS
+catalog-triggered-x7k9p          5 seconds ago  -          Running
+----
+
+Follow the logs:
+
+[source,bash]
+----
+tkn pipelinerun logs -f --last -n retailflow
+----
+
+== Troubleshooting Triggers
+
+Check the EventListener pod logs for incoming webhook events and interceptor decisions:
+
+[source,bash]
+----
+oc logs -l eventlistener=github-push-listener -n retailflow --tail=50
+----
+
+[cols="3,3,4",options="header"]
+|===
+| Symptom | Likely Cause | Fix
+
+| GitHub reports `Failed to connect to host`
+| CRC cluster not reachable from the internet
+| Use a tunnel (e.g. `ngrok`) to expose the Route publicly, or test with a manual `curl` from within the cluster
+
+| GitHub reports `200 OK` but no PipelineRun is created
+| Push was on a branch other than `main`/`master` (filtered by CEL interceptor)
+| Push to `main` or `master`, or edit the CEL filter expression in `eventlistener.yaml`
+
+| EventListener pod log shows `no request body`
+| Webhook content type is not `application/json`
+| In GitHub webhook settings, change Content type to `application/json`
+
+| EventListener pod log shows `no valid signature`
+| Webhook secret does not match `github-webhook-secret`
+| Regenerate the secret, update both the Kubernetes Secret and the GitHub webhook, and re-apply
+
+| PipelineRun is created but fails at `fetch-source`
+| `service-name` extracted from `body.repository.name` does not match a service in `apps/`
+| The TriggerBinding uses the GitHub repository name as the service name — ensure your repo is named after a RetailFlow service, or customize the `SERVICE_DIR` in the TriggerTemplate
+
+| Route exists but returns `503`
+| EventListener pod not ready yet
+| `oc wait --for=condition=Ready pod -l eventlistener=github-push-listener -n retailflow --timeout=60s`
+|===
+
+== Workshop Complete
+
+You have completed Workshop 03.
+All five scenarios have been applied and verified:
+
+* Tekton fundamentals — resource model and workspace mechanics
+* First pipeline — full CI cycle for the `catalog` service
+* Quality gates — Maven tests as a blocking pipeline gate
+* Multi-stack pipelines — Python and Node.js services via `generic-service-pipeline`
+* Triggers — GitHub webhook automation with HMAC validation and CEL branch filtering
+
+Return to the xref:03-pipelines/index.adoc[Workshop 03 Overview] or continue from the xref:../index.adoc[home page].

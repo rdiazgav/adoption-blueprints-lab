@@ -1,0 +1,127 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: quarkus-service-pipeline
+  namespace: retailflow
+  labels:
+    app.kubernetes.io/part-of: retailflow
+    app.kubernetes.io/managed-by: kustomize
+  annotations:
+    tekton.dev/displayName: "Quarkus Service CI Pipeline"
+    tekton.dev/tags: java, quarkus, maven, buildah
+spec:
+  description: >-
+    End-to-end CI pipeline for Quarkus (JVM) services.
+    Clones the repository, runs Maven build and tests, builds the container
+    image with Buildah, pushes it to Quay, and deploys to OpenShift by
+    updating the Deployment image reference and waiting for rollout.
+  params:
+    - name: GIT_URL
+      type: string
+      description: "Git repository URL"
+    - name: GIT_REVISION
+      type: string
+      default: "master"
+      description: "Git branch, tag, or commit SHA to build"
+    - name: SERVICE_NAME
+      type: string
+      description: "Short service name, e.g. catalog"
+    - name: SERVICE_DIR
+      type: string
+      description: "Path to service source relative to repo root, e.g. apps/catalog"
+    - name: IMAGE_REGISTRY
+      type: string
+      default: "quay.io"
+      description: "Container image registry hostname"
+    - name: IMAGE_NAMESPACE
+      type: string
+      default: "rdiazgav"
+      description: "Registry namespace / organization"
+    - name: IMAGE_TAG
+      type: string
+      default: "latest"
+      description: "Image tag to apply (use git SHA for traceability)"
+    - name: SKIP_TESTS
+      type: string
+      default: "false"
+      description: "Set to 'true' to skip Maven tests (not recommended for production)"
+  workspaces:
+    - name: source
+      description: "Shared workspace for cloned source code"
+    - name: maven-cache
+      description: "Persistent Maven local repository cache"
+    - name: docker-credentials
+      description: "Quay registry credentials for Buildah push"
+  tasks:
+    - name: fetch-source
+      taskRef:
+        name: git-clone
+        kind: Task
+      workspaces:
+        - name: output
+          workspace: source
+      params:
+        - name: url
+          value: $(params.GIT_URL)
+        - name: revision
+          value: $(params.GIT_REVISION)
+
+    - name: build-service
+      runAfter:
+        - fetch-source
+      taskRef:
+        name: maven-build
+        kind: Task
+      workspaces:
+        - name: source
+          workspace: source
+        - name: maven-cache
+          workspace: maven-cache
+      params:
+        - name: SERVICE_DIR
+          value: $(params.SERVICE_DIR)
+        - name: MAVEN_ARGS
+          value: "-DskipTests=$(params.SKIP_TESTS)"
+
+    - name: build-image
+      runAfter:
+        - build-service
+      taskRef:
+        name: buildah
+        kind: Task
+      workspaces:
+        - name: source
+          workspace: source
+        - name: dockerconfig
+          workspace: docker-credentials
+      params:
+        - name: IMAGE
+          value: "$(params.IMAGE_REGISTRY)/$(params.IMAGE_NAMESPACE)/retailflow-$(params.SERVICE_NAME):$(params.IMAGE_TAG)"
+        - name: CONTEXT
+          value: "$(workspaces.source.path)/$(params.SERVICE_DIR)"
+        - name: DOCKERFILE
+          value: "./src/main/docker/Dockerfile.jvm"
+        - name: TLSVERIFY
+          value: "true"
+
+    - name: deploy
+      runAfter:
+        - build-image
+      taskRef:
+        name: deploy-to-openshift
+        kind: Task
+      params:
+        - name: DEPLOYMENT_NAME
+          value: $(params.SERVICE_NAME)
+        - name: CONTAINER_NAME
+          value: $(params.SERVICE_NAME)
+        - name: IMAGE
+          value: "$(params.IMAGE_REGISTRY)/$(params.IMAGE_NAMESPACE)/retailflow-$(params.SERVICE_NAME):$(params.IMAGE_TAG)"
+
+  results:
+    - name: IMAGE_URL
+      description: "Full image reference that was built and pushed"
+      value: $(tasks.build-image.results.IMAGE_URL)
+    - name: IMAGE_DIGEST
+      description: "Image digest (sha256) of the pushed image"
+      value: $(tasks.build-image.results.IMAGE_DIGEST)

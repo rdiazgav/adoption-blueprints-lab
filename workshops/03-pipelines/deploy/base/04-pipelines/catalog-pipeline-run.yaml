@@ -1,0 +1,35 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: catalog-pipeline-run-
+  namespace: retailflow
+  labels:
+    app.kubernetes.io/part-of: retailflow
+    tekton.dev/pipeline: quarkus-service-pipeline
+spec:
+  pipelineRef:
+    name: quarkus-service-pipeline
+  serviceAccountName: pipeline-sa
+  timeouts:
+    pipeline: 30m
+  workspaces:
+    - name: source
+      persistentVolumeClaim:
+        claimName: pipeline-source-pvc
+    - name: maven-cache
+      persistentVolumeClaim:
+        claimName: pipeline-maven-cache-pvc
+    - name: docker-credentials
+      secret:
+        secretName: quay-credentials
+  params:
+    - name: GIT_URL
+      value: "https://github.com/rdiazgav/adoption-blueprints-lab.git"
+    - name: GIT_REVISION
+      value: "master"
+    - name: SERVICE_NAME
+      value: "catalog"
+    - name: SERVICE_DIR
+      value: "apps/catalog"
+    - name: IMAGE_TAG
+      value: "latest"

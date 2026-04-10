@@ -1,0 +1,105 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: generic-service-pipeline
+  namespace: retailflow
+  labels:
+    app.kubernetes.io/part-of: retailflow
+    app.kubernetes.io/managed-by: kustomize
+  annotations:
+    tekton.dev/displayName: "Generic Service CI Pipeline"
+    tekton.dev/tags: python, nodejs, buildah
+spec:
+  description: >-
+    End-to-end CI pipeline for Python and Node.js services.
+    Clones the repository, builds the container image with Buildah using the
+    service's own Dockerfile, pushes it to Quay, and deploys to OpenShift.
+    No Maven build step — all language-specific tooling is handled inside
+    the Dockerfile.
+  params:
+    - name: GIT_URL
+      type: string
+      description: "Git repository URL"
+    - name: GIT_REVISION
+      type: string
+      default: "master"
+      description: "Git branch, tag, or commit SHA to build"
+    - name: SERVICE_NAME
+      type: string
+      description: "Short service name, e.g. recommendations"
+    - name: SERVICE_DIR
+      type: string
+      description: "Path to service source relative to repo root, e.g. apps/recommendations"
+    - name: IMAGE_REGISTRY
+      type: string
+      default: "quay.io"
+      description: "Container image registry hostname"
+    - name: IMAGE_NAMESPACE
+      type: string
+      default: "rdiazgav"
+      description: "Registry namespace / organization"
+    - name: IMAGE_TAG
+      type: string
+      default: "latest"
+      description: "Image tag to apply (use git SHA for traceability)"
+  workspaces:
+    - name: source
+      description: "Shared workspace for cloned source code"
+    - name: docker-credentials
+      description: "Quay registry credentials for Buildah push"
+  tasks:
+    - name: fetch-source
+      taskRef:
+        name: git-clone
+        kind: Task
+      workspaces:
+        - name: output
+          workspace: source
+      params:
+        - name: url
+          value: $(params.GIT_URL)
+        - name: revision
+          value: $(params.GIT_REVISION)
+
+    - name: build-image
+      runAfter:
+        - fetch-source
+      taskRef:
+        name: buildah
+        kind: Task
+      workspaces:
+        - name: source
+          workspace: source
+        - name: dockerconfig
+          workspace: docker-credentials
+      params:
+        - name: IMAGE
+          value: "$(params.IMAGE_REGISTRY)/$(params.IMAGE_NAMESPACE)/retailflow-$(params.SERVICE_NAME):$(params.IMAGE_TAG)"
+        - name: CONTEXT
+          value: "$(workspaces.source.path)/$(params.SERVICE_DIR)"
+        - name: DOCKERFILE
+          value: "./Dockerfile"
+        - name: TLSVERIFY
+          value: "true"
+
+    - name: deploy
+      runAfter:
+        - build-image
+      taskRef:
+        name: deploy-to-openshift
+        kind: Task
+      params:
+        - name: DEPLOYMENT_NAME
+          value: $(params.SERVICE_NAME)
+        - name: CONTAINER_NAME
+          value: $(params.SERVICE_NAME)
+        - name: IMAGE
+          value: "$(params.IMAGE_REGISTRY)/$(params.IMAGE_NAMESPACE)/retailflow-$(params.SERVICE_NAME):$(params.IMAGE_TAG)"
+
+  results:
+    - name: IMAGE_URL
+      description: "Full image reference that was built and pushed"
+      value: $(tasks.build-image.results.IMAGE_URL)
+    - name: IMAGE_DIGEST
+      description: "Image digest (sha256) of the pushed image"
+      value: $(tasks.build-image.results.IMAGE_DIGEST)

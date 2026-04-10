@@ -1,0 +1,16 @@
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerBinding
+metadata:
+  name: github-push-binding
+  namespace: retailflow
+  labels:
+    app.kubernetes.io/part-of: retailflow
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  params:
+    - name: git-revision
+      value: $(body.head_commit.id)
+    - name: git-url
+      value: $(body.repository.clone_url)
+    - name: service-name
+      value: $(body.repository.name)

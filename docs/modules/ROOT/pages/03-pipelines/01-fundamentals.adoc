@@ -1,0 +1,135 @@
+= Tekton Fundamentals
+:navtitle: Tekton fundamentals
+
+Estimated time: *15 minutes*
+
+[.lead]
+Before running a pipeline, understand the Kubernetes resource model that Tekton uses.
+Everything in Tekton — tasks, pipelines, runs — is a regular custom resource stored in etcd,
+inspectable with `oc get`, and version-controllable alongside your application code.
+
+== The Tekton Resource Model
+
+[cols="2,4,4",options="header"]
+|===
+| CRD | What It Is | Analogy
+
+| `Task`
+| A reusable unit of work composed of sequential steps. Each step runs in its own container.
+| A shell function or Ansible role
+
+| `TaskRun`
+| An instantiation of a Task — provides the actual parameter values and workspace bindings. Created manually or by a PipelineRun.
+| A function call
+
+| `Pipeline`
+| A directed acyclic graph of Tasks with shared workspaces and parameter flow between tasks.
+| A Jenkinsfile or GitHub Actions workflow
+
+| `PipelineRun`
+| An instantiation of a Pipeline — triggers execution, records status and results.
+| A workflow run / build number
+
+| `Workspace`
+| A named volume mount contract between a Task and its caller. Backed by a PVC, ConfigMap, Secret, or emptyDir.
+| A shared directory passed between pipeline steps
+
+| `TriggerBinding`
+| Extracts fields from an HTTP payload (e.g. GitHub push event) and maps them to named parameters.
+| Webhook field extractor
+
+| `TriggerTemplate`
+| A template that creates Kubernetes resources (usually PipelineRuns) when a trigger fires. Receives parameters from a TriggerBinding.
+| Webhook handler / job template
+
+| `EventListener`
+| A pod that listens for HTTP events, applies interceptors (validation, filtering), and invokes TriggerBindings and TriggerTemplates.
+| Webhook endpoint
+|===
+
+== How Tekton Differs from Jenkins and GitHub Actions
+
+Jenkins and GitHub Actions both use a proprietary DSL stored in a file (`Jenkinsfile`, `workflow.yml`) that is interpreted by a central server or SaaS platform.
+Tekton takes a different approach: every pipeline primitive is a Kubernetes custom resource.
+
+* *Portability*: Tasks and Pipelines are YAML objects — you can `oc apply` them to any cluster that has the Tekton CRDs installed.
+* *Observability*: PipelineRuns and TaskRuns are Kubernetes objects. `oc get pipelinerun`, `oc describe taskrun`, and `tkn pipelinerun logs` work the same way as any other `oc` command.
+* *Reusability*: Community-maintained Tasks are published on link:https://hub.tekton.dev[Tekton Hub] and applied with a single `oc apply -f`. There is no plugin registry to manage.
+* *Security*: Each PipelineRun runs under a ServiceAccount with scoped RBAC. Secrets are mounted as Kubernetes Secrets — not stored in a CI server config file.
+
+The tradeoff is verbosity: Tekton requires more YAML than a Jenkinsfile for simple pipelines.
+The payoff is that complex, multi-service pipelines scale without introducing a separate CI server.
+
+== OpenShift Pipelines = Tekton + Extras
+
+Red Hat OpenShift Pipelines ships the upstream Tekton Pipelines and Tekton Triggers controllers, adds:
+
+* *Pipelines as Code*: Git-native pipeline definitions stored in `.tekton/` inside your repository
+* *tkn CLI*: Extended command-line tool for managing and inspecting pipeline resources
+* *OpenShift Console integration*: A Pipelines section in the Developer perspective showing live PipelineRun status and logs
+* *Operator lifecycle management*: Installed and upgraded via the OpenShift Pipelines Operator from OperatorHub
+
+The resources in this workshop are written against the Tekton v1 API (`tekton.dev/v1`) and are fully compatible with OpenShift Pipelines.
+
+== Hands-On: Explore Available Tasks
+
+After running `setup.sh`, verify the Tasks that were installed:
+
+[source,bash]
+----
+# Custom tasks installed by this workshop
+tkn task list -n retailflow
+----
+
+.Expected output
+[source]
+----
+NAME                   DESCRIPTION                                      AGE
+buildah                Buildah task builds source into a container...   2m
+deploy-to-openshift    Updates a Deployment image and waits for...      2m
+git-clone              These Tasks are Git tasks to work with...        2m
+maven-build            Builds a Quarkus service using the Maven...      2m
+----
+
+[source,bash]
+----
+# ClusterTasks are cluster-scoped (if any were pre-installed by the operator)
+tkn clustertask list
+----
+
+[NOTE]
+====
+ClusterTasks are cluster-scoped and available in all namespaces — they are useful for Tasks that every team needs (e.g. `git-clone`, `buildah`).
+Tasks without the `Cluster` prefix are namespace-scoped.
+In this workshop all Tasks are namespace-scoped in `retailflow`, which makes them easier to inspect and modify without cluster-admin rights.
+====
+
+== Workspaces and PVCs
+
+Workspaces solve a fundamental problem in containerized CI: steps run in different containers and cannot share an in-memory filesystem.
+Tekton Workspaces abstract the backing storage — the Task author declares *what* the workspace is for, and the caller decides *how* it is backed.
+
+[source]
+----
+PipelineRun
+  └─ workspace: source → PVC: pipeline-source-pvc (ReadWriteOnce, 1 Gi)
+  └─ workspace: maven-cache → PVC: pipeline-maven-cache-pvc (ReadWriteOnce, 2 Gi)
+  └─ workspace: docker-credentials → Secret: quay-credentials
+
+Pipeline
+  └─ Task: git-clone
+       └─ workspace output → source PVC   (git clone writes here)
+  └─ Task: maven-build
+       └─ workspace source → source PVC   (Maven reads source from here)
+       └─ workspace maven-cache → cache PVC  (Maven writes .m2 here)
+  └─ Task: buildah
+       └─ workspace source → source PVC   (Buildah reads JAR + Dockerfile)
+       └─ workspace dockerconfig → Secret (Buildah pushes to Quay)
+----
+
+[TIP]
+====
+The `maven-cache` PVC dramatically reduces build times.
+On the first run Maven downloads all dependencies (~200 MB for a typical Quarkus service) from the internet and stores them in the PVC.
+Every subsequent run reads from the PVC — cold builds that take 8–10 minutes drop to 2–3 minutes.
+====

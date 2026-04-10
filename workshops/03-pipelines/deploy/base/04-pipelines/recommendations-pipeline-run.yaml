@@ -1,0 +1,32 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: recommendations-pipeline-run-
+  namespace: retailflow
+  labels:
+    app.kubernetes.io/part-of: retailflow
+    tekton.dev/pipeline: generic-service-pipeline
+spec:
+  pipelineRef:
+    name: generic-service-pipeline
+  serviceAccountName: pipeline-sa
+  timeouts:
+    pipeline: 30m
+  workspaces:
+    - name: source
+      persistentVolumeClaim:
+        claimName: pipeline-source-pvc
+    - name: docker-credentials
+      secret:
+        secretName: quay-credentials
+  params:
+    - name: GIT_URL
+      value: "https://github.com/rdiazgav/adoption-blueprints-lab.git"
+    - name: GIT_REVISION
+      value: "master"
+    - name: SERVICE_NAME
+      value: "recommendations"
+    - name: SERVICE_DIR
+      value: "apps/recommendations"
+    - name: IMAGE_TAG
+      value: "latest"

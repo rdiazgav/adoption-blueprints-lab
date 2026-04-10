@@ -1,0 +1,53 @@
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: retailflow-trigger-template
+  namespace: retailflow
+  labels:
+    app.kubernetes.io/part-of: retailflow
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  params:
+    - name: git-revision
+      description: "The git commit SHA that triggered this run"
+    - name: git-url
+      description: "The clone URL of the repository"
+    - name: service-name
+      description: "The repository / service name (used as pipeline SERVICE_NAME)"
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1
+      kind: PipelineRun
+      metadata:
+        generateName: $(tt.params.service-name)-triggered-
+        namespace: retailflow
+        labels:
+          app.kubernetes.io/part-of: retailflow
+          tekton.dev/pipeline: quarkus-service-pipeline
+          triggers.tekton.dev/trigger: github-push
+      spec:
+        pipelineRef:
+          name: quarkus-service-pipeline
+        serviceAccountName: pipeline-sa
+        timeouts:
+          pipeline: 30m
+        workspaces:
+          - name: source
+            persistentVolumeClaim:
+              claimName: pipeline-source-pvc
+          - name: maven-cache
+            persistentVolumeClaim:
+              claimName: pipeline-maven-cache-pvc
+          - name: docker-credentials
+            secret:
+              secretName: quay-credentials
+        params:
+          - name: GIT_URL
+            value: $(tt.params.git-url)
+          - name: GIT_REVISION
+            value: $(tt.params.git-revision)
+          - name: SERVICE_NAME
+            value: $(tt.params.service-name)
+          - name: IMAGE_TAG
+            value: $(tt.params.git-revision)
+          - name: SERVICE_DIR
+            value: apps/$(tt.params.service-name)

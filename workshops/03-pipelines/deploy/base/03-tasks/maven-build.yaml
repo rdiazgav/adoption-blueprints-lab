@@ -1,0 +1,43 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: maven-build
+  namespace: retailflow
+  labels:
+    app.kubernetes.io/part-of: retailflow
+    app.kubernetes.io/managed-by: kustomize
+  annotations:
+    tekton.dev/displayName: "Maven Build (Quarkus)"
+    tekton.dev/tags: java, maven, quarkus
+spec:
+  description: >-
+    Builds a Quarkus service using the Maven wrapper and caches dependencies.
+    Expects the Maven wrapper (mvnw) to be present in the service directory.
+    Dependency artifacts are stored in the maven-cache workspace to speed up
+    subsequent runs.
+  params:
+    - name: SERVICE_DIR
+      type: string
+      description: "Path to the service directory relative to workspace root, e.g. apps/catalog"
+    - name: MAVEN_ARGS
+      type: string
+      default: "-DskipTests=false"
+      description: "Extra Maven arguments"
+    - name: JAVA_VERSION
+      type: string
+      default: "eclipse-temurin:21-jdk"
+      description: "Java base image — not used directly; documents the JDK requirement"
+  workspaces:
+    - name: source
+      description: "Checked-out source code"
+    - name: maven-cache
+      description: "Persistent Maven local repository cache"
+  steps:
+    - name: mvn-package
+      image: maven:3.9-eclipse-temurin-21
+      workingDir: $(workspaces.source.path)/$(params.SERVICE_DIR)
+      command: ["./mvnw"]
+      args:
+        - package
+        - "-Dmaven.repo.local=$(workspaces.maven-cache.path)/.m2/repository"
+        - "$(params.MAVEN_ARGS)"

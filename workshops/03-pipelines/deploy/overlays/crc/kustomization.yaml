@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: retailflow
+bases:
+  - ../../base/01-rbac
+  - ../../base/02-workspaces
+  - ../../base/03-tasks
+  - ../../base/04-pipelines
+patches:
+  - path: pipeline-source-pvc-patch.yaml
+    target:
+      kind: PersistentVolumeClaim
+      name: pipeline-source-pvc
+  - path: pipeline-maven-cache-pvc-patch.yaml
+    target:
+      kind: PersistentVolumeClaim
+      name: pipeline-maven-cache-pvc
