@@ -31,6 +31,9 @@ spec:
   steps:
     - name: mvn-package
       image: registry.access.redhat.com/ubi9/openjdk-21
+      env:
+        - name: JAVA_TOOL_OPTIONS
+          value: "-Dorg.apache.maven.wrapper.skip=false"
       script: |
         #!/usr/bin/env bash
         set -euo pipefail
@@ -38,6 +41,8 @@ spec:
         cd $(workspaces.source.path)/$(params.SERVICE_DIR)
 
         export MAVEN_USER_HOME=$(workspaces.maven-cache.path)/.m2
+        # Pin the wrapper base URL to Maven Central so no ambient env var redirects the download
+        export MVNW_REPOURL=https://repo.maven.apache.org/maven2
 
         ./mvnw package \
           -Dmaven.repo.local=${MAVEN_USER_HOME}/repository \
