@@ -35,6 +35,8 @@ spec:
         #!/usr/bin/env bash
         set -euo pipefail
 
+        microdnf install -y gzip tar --nodocs 2>/dev/null
+
         MAVEN_VERSION=3.9.14
         MAVEN_URL=https://archive.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz
         MAVEN_HOME=/tmp/maven
