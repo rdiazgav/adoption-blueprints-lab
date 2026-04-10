@@ -60,6 +60,8 @@ spec:
           value: vfs
         - name: BUILDAH_ISOLATION
           value: chroot
+        - name: BUILDAH_LAYERS
+          value: "false"
         - name: DOCKER_CONFIG
           value: "$(workspaces.dockerconfig.path)"
       volumeMounts:
@@ -70,8 +72,8 @@ spec:
         set -euo pipefail
 
         mkdir -p /tmp/.config/containers
-        echo '[storage]' > /tmp/.config/containers/storage.conf
-        echo 'driver = "vfs"' >> /tmp/.config/containers/storage.conf
+        printf '[storage]\ndriver = "vfs"\n\n[storage.options]\nignore_chown_errors = "true"\n' \
+          > /tmp/.config/containers/storage.conf
 
         buildah bud \
           --isolation=chroot \
