@@ -190,6 +190,18 @@ bash scripts/run-pipeline.sh frontend
 tkn pipelinerun logs -f --last -n retailflow
 ```
 
+> **Note — image tag divergence (by design)**
+>
+> The pipeline tags images with the git branch name (e.g. `master`) or a commit SHA.
+> The Kustomize base manifests in `deploy/base/` reference versioned tags such as `1.0.8`.
+> After a pipeline run, `oc set image` updates the live Deployment directly, so the running pod
+> uses the pipeline-built image — but the manifests on disk still show the original tag.
+>
+> This divergence is **intentional at this stage**. Keeping the manifest tags stable prevents
+> unintended re-deploys when `oc apply` is run again. The full image/manifest reconciliation loop —
+> where the pipeline commits the new tag back to git and ArgoCD applies it — is introduced in
+> **Workshop 04 — GitOps**.
+
 ---
 
 ## Known Issues and Solutions (CRC)
